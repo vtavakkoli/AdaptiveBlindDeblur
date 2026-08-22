@@ -56,9 +56,21 @@ result, kernel, interim = deblur_image(image, config)
 write_image("output.png", result)
 ```
 
+## MATLAB reference comparison
+
+A same-input regression case is included under [`examples/real_img2`](examples/real_img2). It contains the blurred test image preview, the authors' saved MATLAB result and kernel, and the Python full/fast results and kernels.
+
+| Output | PSNR vs MATLAB output | SSIM vs MATLAB output | Kernel correlation |
+|---|---:|---:|---:|
+| Python full | 31.49 dB | 0.9555 | 0.8805 |
+| Python `--fast` | 34.80 dB | 0.9756 | 0.9524 |
+| Blurred input | 25.03 dB | 0.7797 | — |
+
+These are **agreement metrics against the authors' released MATLAB result, not ground-truth quality metrics**. The measurements were computed from the lossless 360×480 PNG sources before the compact repository previews were encoded. See [`examples/real_img2/README.md`](examples/real_img2/README.md) and [`metrics.json`](examples/real_img2/metrics.json).
+
 ## Tests
 
-Run the unit and synthetic pipeline tests locally:
+Run the unit, synthetic pipeline, and reference-regression tests locally:
 
 ```bash
 python -m pytest -q tests
