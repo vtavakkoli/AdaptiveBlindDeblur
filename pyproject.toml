@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dark-channel-deblur"
+version = "0.1.0"
+description = "Fast Python implementation of blind image deblurring with the dark channel prior (Pan et al., CVPR 2016)."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=2.0,<3",
+  "scipy>=1.14,<2",
+  "opencv-python-headless>=4.10,<5",
+  "numba>=0.61,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<10",
+  "pytest-cov>=6,<8",
+]
+
+[project.scripts]
+dark-channel-deblur = "dark_channel_deblur.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --disable-warnings --maxfail=1"
