@@ -18,6 +18,9 @@ add_library(deblur_lib
     src/deblur.cpp
     src/fft.cpp
     src/image_io.cpp
+    src/image_ops.cpp
+    src/optimization.cpp
+    src/nonblind.cpp
 )
 target_include_directories(deblur_lib PUBLIC include PRIVATE src)
 target_link_libraries(deblur_lib PUBLIC PNG::PNG JPEG::JPEG ${FFTW3_LIBRARY})
