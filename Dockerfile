@@ -13,6 +13,8 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY tests ./tests
+COPY examples ./examples
+COPY scripts ./scripts
 RUN pip install --no-cache-dir ".[dev]"
 
 ENTRYPOINT ["dark-channel-deblur"]
