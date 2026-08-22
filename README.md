@@ -56,6 +56,28 @@ result, kernel, interim = deblur_image(image, config)
 write_image("output.png", result)
 ```
 
+## MATLAB-reference visual comparison
+
+The repository includes compact visual previews of the original `real_img2.png` test case, the authors' saved MATLAB result/kernel, and controlled outputs from this Python port under `examples/`.
+
+| Blurred input | MATLAB reference | Python full | Python `--fast` |
+|---|---|---|---|
+| ![Blurred input](examples/real_img2/input_preview.jpg) | ![MATLAB reference](examples/real_img2/matlab_reference/result_preview.jpg) | ![Python full](examples/real_img2/python/full_result_preview.jpg) | ![Python fast](examples/real_img2/python/fast_result_preview.jpg) |
+
+Kernel images are stored beside the outputs in `examples/real_img2/matlab_reference/` and `examples/real_img2/python/`.
+
+For the original demo parameters (`kernel_size=25`, `lambda_dark=lambda_grad=0.004`, `gamma=1.0`, `lambda_tv=0.003`), a controlled rerun produced:
+
+| Output | Runtime* | PSNR vs released MATLAB result | SSIM vs released MATLAB result | Kernel correlation |
+|---|---:|---:|---:|---:|
+| Python full | 22.23 s | 31.49 dB | 0.9555 | 0.8805 |
+| Python `--fast` | 6.40 s | 34.80 dB | 0.9756 | 0.9524 |
+| Blurred input | - | 25.03 dB | 0.7797 | - |
+
+\*Runtime is specific to the current runner. MATLAB/Octave was unavailable, so the original runtime was not re-measured. The MATLAB image is the **authors' saved reference output, not ground truth**; PSNR/SSIM therefore quantify agreement with the released algorithm result rather than absolute restoration quality. The Python full result has higher Laplacian variance than the MATLAB reference, but that metric can reward ringing/noise as well as genuine sharpness. See [`examples/real_img2/README.md`](examples/real_img2/README.md) and [`metrics.json`](examples/real_img2/metrics.json) for details.
+
+You can reproduce the numerical comparison with `scripts/compare_reference.py`.
+
 ## Tests
 
 Run the unit and synthetic pipeline tests locally:
@@ -87,7 +109,7 @@ docker compose run --rm deblur \
 
 The optimization objective and coarse-to-fine kernel-estimation sequence follow the supplied CVPR 2016 MATLAB code. Two implementation details are intentionally modernized for speed and robustness:
 
-1. The boundary extension uses a vectorized smooth periodic extension rather than the MATLAB package's external sine-transform Poisson helper.
+1. The boundary extension uses symmetric reflection rather than the MATLAB package's external sine-transform Poisson helper.
 2. The dark-channel auxiliary update applies selected local-minimum changes in bulk, avoiding order-dependent overlapping patch copies.
 
 Those changes make the implementation practical and deterministic in Python while retaining the core dark-channel-prior method. Exact bit-for-bit MATLAB reproduction is not a goal.
