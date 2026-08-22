@@ -1,0 +1,12 @@
+services:
+  test:
+    build: .
+    entrypoint: ["python", "-m", "pytest"]
+    command: ["-q", "tests"]
+
+  deblur:
+    build: .
+    volumes:
+      - ./data:/data
+    # Example:
+    # docker compose run --rm deblur /data/input.png /data/output.png --kernel-size 25 --fast
