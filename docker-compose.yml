@@ -1,0 +1,20 @@
+services:
+  test:
+    build:
+      context: .
+    entrypoint: ["ctest"]
+    command: ["--test-dir", "/app/build", "--output-on-failure"]
+
+  deblur:
+    build:
+      context: .
+    volumes:
+      - ./data:/data
+    command:
+      - /data/input.png
+      - /data/output.png
+      - --kernel-size
+      - "25"
+      - --kernel-out
+      - /data/kernel.png
+      - --fast
