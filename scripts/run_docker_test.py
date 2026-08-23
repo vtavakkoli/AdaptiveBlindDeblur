@@ -31,8 +31,16 @@ def validate_report(report: dict) -> None:
         raise RuntimeError("benchmark is not marked as native resolution")
     if dataset.get("resizing_applied") is not False:
         raise RuntimeError("benchmark reports that resizing was applied")
+    if dataset.get("profile_file") != "dataset/benchmark_profiles.json":
+        raise RuntimeError("benchmark did not record the explicit profile file")
     if set(report.get("aggregate", {})) != METHODS:
         raise RuntimeError("report.json does not contain all three methods")
+
+    legacy = report.get("legacy_comparison", {})
+    if legacy.get("role") != "evaluation_only":
+        raise RuntimeError("legacy outputs must be evaluation-only")
+    if legacy.get("resampling_permitted") is not False:
+        raise RuntimeError("legacy reference resampling must remain disabled")
 
     cases = report.get("images", [])
     if len(cases) != EXPECTED_IMAGES:
@@ -50,6 +58,16 @@ def validate_report(report: dict) -> None:
                     f"{output_shapes.get(method)} != {source_shape}"
                 )
 
+        profile = case.get("profile", {})
+        kernel_size = int(profile.get("kernel_size", 0))
+        if kernel_size < 3 or kernel_size % 2 == 0:
+            raise RuntimeError(f"invalid benchmark kernel support for {case.get('name')}: {kernel_size}")
+        if case.get("kernel_shape") != [kernel_size, kernel_size]:
+            raise RuntimeError(
+                f"estimated kernel shape does not match profile for {case.get('name')}: "
+                f"{case.get('kernel_shape')} != {[kernel_size, kernel_size]}"
+            )
+
         case_dir = ROOT / "results" / case["result_dir"]
         required = {
             case["source_copy"],
@@ -63,22 +81,26 @@ def validate_report(report: dict) -> None:
             if not (case_dir / name).is_file():
                 raise RuntimeError(f"missing generated output: {case_dir / name}")
 
-        historical = case.get("historical_matlab", {})
-        if historical.get("result_copy") and not (case_dir / historical["result_copy"]).is_file():
-            raise RuntimeError(f"missing historical reference copy for {case.get('name')}")
-        if historical.get("kernel_exact_shape_match") and not (
-            case_dir / "historical_matlab_kernel.png"
+        if case.get("legacy_reference_status") == "exact_shape" and not (
+            case_dir / "legacy_result.png"
         ).is_file():
-            raise RuntimeError(f"missing historical kernel copy for {case.get('name')}")
+            raise RuntimeError(f"missing legacy result copy for {case.get('name')}")
+        if case.get("legacy_kernel_shape") is not None and not (
+            case_dir / "legacy_kernel.png"
+        ).is_file():
+            raise RuntimeError(f"missing legacy kernel copy for {case.get('name')}")
 
 
 def main() -> int:
-    print("[1/4] Validating the complete committed dataset/image folder", flush=True)
+    print("[1/4] Validating dataset and explicit benchmark profiles", flush=True)
     images = source_images()
     if len(images) != EXPECTED_IMAGES:
         raise RuntimeError(
             f"dataset/image contains {len(images)} supported images; expected {EXPECTED_IMAGES}"
         )
+    profiles = json.loads((ROOT / "dataset" / "benchmark_profiles.json").read_text(encoding="utf-8"))
+    if set(profiles) != {path.name for path in images}:
+        raise RuntimeError("benchmark_profiles.json must define exactly one profile for every source image")
 
     print("[2/4] Running Python unit and regression tests", flush=True)
     subprocess.run(
@@ -88,7 +110,7 @@ def main() -> int:
     )
 
     print(
-        "[3/4] Running 23 native-resolution images × 3 methods; no resizing is permitted",
+        "[3/4] Running 23 full-quality native-resolution images × 3 methods; no resizing is permitted",
         flush=True,
     )
     subprocess.run(
@@ -97,7 +119,7 @@ def main() -> int:
         check=True,
     )
 
-    print("[4/4] Verifying report contract, dimensions, and generated files", flush=True)
+    print("[4/4] Verifying report contract, dimensions, PSFs, and generated files", flush=True)
     report_json = ROOT / "results" / "report.json"
     required_reports = [
         ROOT / "results" / "report.html",
@@ -111,13 +133,13 @@ def main() -> int:
     report = json.loads(report_json.read_text(encoding="utf-8"))
     validate_report(report)
 
-    historical = report.get("historical_reference", {})
+    legacy = report.get("legacy_comparison", {})
     print(
         "Docker validation complete: "
         f"{EXPECTED_IMAGES} native-resolution sources, "
         f"{EXPECTED_IMAGES * len(METHODS)} restorations, "
-        f"{EXPECTED_IMAGES} shared PSFs, "
-        f"{historical.get('exact_shape_result_matches', 0)} exact-shape MATLAB references. "
+        f"{EXPECTED_IMAGES} independently estimated PSFs, "
+        f"{legacy.get('exact_shape_results', 0)} legacy outputs compared. "
         "Open results/report.html for the complete comparison.",
         flush=True,
     )
