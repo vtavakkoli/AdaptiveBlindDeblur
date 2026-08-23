@@ -14,12 +14,13 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install --no-cache-dir ".[dev]"
 
-# Regression assets and test/report tooling are intentionally copied into the
-# image: docker-compose's test service validates the real reference images and
-# writes a portable comparison report to /app/results.
+# Tests, reference material, dataset bootstrap and report tooling are part of
+# the validation image. The test command downloads/extracts the authors'
+# official image folder into /app/dataset/image before benchmarking it.
 COPY tests ./tests
 COPY examples ./examples
+COPY dataset ./dataset
 COPY scripts ./scripts
-RUN mkdir -p /app/results
+RUN mkdir -p /app/results /app/dataset/image
 
 ENTRYPOINT ["dark-channel-deblur"]
