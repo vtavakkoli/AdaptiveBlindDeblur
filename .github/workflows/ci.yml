@@ -33,7 +33,7 @@ jobs:
         run: python -m pytest -q tests
 
   docker-compose:
-    name: Native-resolution benchmark
+    name: Full-quality native-resolution benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -42,7 +42,7 @@ jobs:
         run: mkdir -p results
       - name: Build benchmark container
         run: docker compose build test
-      - name: Run complete native-resolution benchmark
+      - name: Run complete full-quality benchmark
         run: docker compose run --rm test
       - name: Verify benchmark contract
         run: |
@@ -56,10 +56,13 @@ jobs:
           methods = {"baseline", "annealed_pnp", "extreme_channel"}
           report = json.loads(Path("results/report.json").read_text())
           dataset = report["dataset"]
+          legacy = report["legacy_comparison"]
           assert dataset["image_count"] == 23
           assert dataset["native_resolution"] is True
           assert dataset["resizing_applied"] is False
-          assert report["historical_reference"]["resampling_permitted"] is False
+          assert dataset["profile_file"] == "dataset/benchmark_profiles.json"
+          assert legacy["role"] == "evaluation_only"
+          assert legacy["resampling_permitted"] is False
           assert len(report["images"]) == 23
           assert set(report["aggregate"]) == methods
 
@@ -69,6 +72,9 @@ jobs:
               source_shape = case["source_shape"]
               for method in methods:
                   assert case["output_shapes"][method] == source_shape, (case["name"], method)
+
+              kernel_size = int(case["profile"]["kernel_size"])
+              assert case["kernel_shape"] == [kernel_size, kernel_size]
 
               directory = Path("results") / case["result_dir"]
               required = {
@@ -83,8 +89,8 @@ jobs:
                   assert (directory / name).is_file(), directory / name
 
           print(
-              "Verified 23 native-resolution sources, 69 restorations, "
-              "23 shared PSFs, and zero benchmark resizing."
+              "Verified 23 full-quality native-resolution sources, 69 restorations, "
+              "23 independently estimated PSFs, explicit profiles, and zero resizing."
           )
           PY
       - name: Publish benchmark summary
