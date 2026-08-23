@@ -6,12 +6,10 @@ import numpy as np
 def wrap_boundary(image: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
     """Create a smooth periodic extension on the bottom/right boundaries.
 
-    The CVPR MATLAB release uses Liu/Jia's Poisson boundary wrapping to make
-    opposite image borders compatible with circular FFT convolution.  This
-    implementation keeps the original image in the top-left (as that code
-    does) and fills the extra FFT support with harmonic-style linear blends
-    between opposite borders.  It is vectorized, dependency-free, stable for
-    tiny images, and suppresses ringing much better than zero/reflect padding.
+    The original image remains in the top-left while the extra FFT support is
+    filled with smooth linear and bilinear blends between opposite borders.
+    The implementation is vectorized, stable for small images, and reduces the
+    discontinuities that otherwise create circular-convolution ringing.
     """
     arr = np.asarray(image, dtype=np.float32)
     h, w = arr.shape[:2]
@@ -27,7 +25,7 @@ def wrap_boundary(image: np.ndarray, target_shape: tuple[int, int]) -> np.ndarra
 
     pad_w = tw - w
     if pad_w:
-        tx = (np.arange(1, pad_w + 1, dtype=np.float32) / (pad_w + 1.0))
+        tx = np.arange(1, pad_w + 1, dtype=np.float32) / (pad_w + 1.0)
         shape = (1, pad_w) + (1,) * (arr.ndim - 2)
         tx = tx.reshape(shape)
         left = arr[:, -1:, ...]
@@ -36,7 +34,7 @@ def wrap_boundary(image: np.ndarray, target_shape: tuple[int, int]) -> np.ndarra
 
     pad_h = th - h
     if pad_h:
-        ty = (np.arange(1, pad_h + 1, dtype=np.float32) / (pad_h + 1.0))
+        ty = np.arange(1, pad_h + 1, dtype=np.float32) / (pad_h + 1.0)
         shape = (pad_h, 1) + (1,) * (arr.ndim - 2)
         ty = ty.reshape(shape)
         top = arr[-1:, :, ...]
@@ -44,7 +42,6 @@ def wrap_boundary(image: np.ndarray, target_shape: tuple[int, int]) -> np.ndarra
         out[h:, :w, ...] = (1.0 - ty) * top + ty * bottom
 
     if pad_h and pad_w:
-        # Bilinear interpolation between the four image corners.
         ty = (np.arange(1, pad_h + 1, dtype=np.float32) / (pad_h + 1.0)).reshape(
             (pad_h, 1) + (1,) * (arr.ndim - 2)
         )
