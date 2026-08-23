@@ -14,13 +14,12 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install --no-cache-dir ".[dev]"
 
-# CI validates every source image committed under dataset/image. The large
-# historical result folders are excluded via .dockerignore so image builds stay
-# compact while the real 23-image source set remains inside the container.
+# Test code and report tooling live in the image. The dataset is mounted
+# read-only by docker-compose so native source/reference files are never copied,
+# resized, or modified during image construction.
 COPY tests ./tests
 COPY examples ./examples
-COPY dataset/image ./dataset/image
 COPY scripts ./scripts
-RUN mkdir -p /app/results
+RUN mkdir -p /app/results /app/dataset
 
 ENTRYPOINT ["dark-channel-deblur"]
