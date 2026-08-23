@@ -1,6 +1,6 @@
 # Contributing
 
-Contributions are welcome when they preserve the repository's reproducibility and benchmark integrity.
+Contributions are welcome when they preserve reproducibility and benchmark integrity.
 
 ## Development setup
 
@@ -24,46 +24,46 @@ docker compose run --rm test
 
 ## Benchmark invariants
 
-Changes to deblurring, report generation, Docker, or dataset handling must preserve these rules:
+Changes to restoration, report generation, Docker, profiles, or dataset handling must preserve these rules:
 
 1. `dataset/image/` sources are processed at native resolution.
-2. Final outputs must have exactly the same dimensions as their source.
-3. Historical references are never resized to make a comparison possible.
-4. PSNR/SSIM against `dataset/results/` must be labeled as historical-output agreement, not ground truth.
-5. The two research refinements reuse the same baseline-estimated PSF within each image.
-6. Dataset assets are mounted read-only in Docker.
-7. Generated experiment files belong in `results/` and must not be committed accidentally.
+2. Final outputs have exactly the same dimensions as their source.
+3. `dataset/benchmark_profiles.json` contains exactly one valid profile for every benchmark source.
+4. The estimated PSF support matches the configured profile for that source.
+5. Legacy references are evaluation-only and are never resized to force a comparison.
+6. Legacy result pixels and legacy kernel values are never supplied to current restoration methods.
+7. PSNR/SSIM against `dataset/results/` are labeled as legacy-output agreement, not ground truth.
+8. The two refinements reuse the same independently estimated baseline PSF within each case.
+9. Dataset assets are mounted read-only in Docker.
+10. Generated experiment files belong in `results/` and must not be committed accidentally.
 
-See `docs/BENCHMARKING.md` for the full protocol.
+See `docs/BENCHMARKING.md` for the complete protocol.
 
 ## Pull request checklist
 
 A benchmark-related PR should explain:
 
 - what algorithmic behavior changed;
+- whether a benchmark profile changed and why;
 - whether the benchmark schema changed;
 - whether runtime or memory use changed materially;
 - whether any metric definition changed;
 - whether output dimensions remain identical to source dimensions;
 - whether new dependencies or model weights were introduced;
+- how artifact/ringing behavior was checked;
 - how the change was validated.
 
 If a new method is added, include focused unit tests and update `docs/METHODS.md`.
 
-## Scientific claims
+## Method and quality claims
 
-Please distinguish clearly between:
+Describe methods according to what the current code actually implements. Do not claim that this repository reproduces a specific published algorithm unless such fidelity is intentionally re-established and independently validated.
 
-- a repository-specific experimental variant;
-- a faithful implementation of a published method;
-- a learned model using published weights;
-- a state-of-the-art claim supported by standard benchmark evidence.
+Do not call a classical or weight-free denoising heuristic a trained diffusion model, and do not make a state-of-the-art claim without an appropriate paired benchmark protocol.
 
-Do not label a weight-free denoising heuristic as a trained diffusion model.
+## Dataset and legacy assets
 
-## Dataset and reference assets
-
-Do not replace or recompress existing dataset/reference files solely to reduce CI runtime. If benchmark runtime must be reduced, optimize the algorithm or create an explicitly separate smoke-test profile; do not silently change the official native-resolution evaluation.
+Do not replace or recompress existing source/legacy files solely to reduce CI runtime. If runtime needs improvement, optimize the computation or introduce an explicitly separate smoke-test workflow; do not silently weaken the native-resolution quality benchmark.
 
 ## Code style
 
