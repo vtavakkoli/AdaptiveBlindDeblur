@@ -1,6 +1,6 @@
 # Dark Channel Deblur — fast Python port + research refinements
 
-A modern, tested Python implementation of the blind image deblurring method from:
+A modern, tested Python implementation of:
 
 > Jinshan Pan, Deqing Sun, Hanspeter Pfister, Ming-Hsuan Yang, **Blind Image Deblurring Using Dark Channel Prior**, CVPR 2016.
 
@@ -19,30 +19,24 @@ A **diffusion-inspired, weight-free** plug-and-play refinement. It is deliberate
 1. an annealed Gaussian-noise schedule;
 2. a fast non-local-means denoising prior;
 3. a closed-form FFT data-consistency step for the measured blur model;
-4. deterministic candidate selection using reblur consistency plus a small high-frequency/noise diagnostic.
+4. deterministic candidate selection using reblur consistency plus a high-frequency/noise diagnostic.
 
 This keeps the useful restoration pattern of modern diffusion/PnP methods—alternate an image prior with explicit measurement consistency—without PyTorch, checkpoints, GPU requirements or neural-network downloads.
 
 ### 3. Extreme-Channel Guided (`extreme-channel`)
 
-A second weight-free refinement motivated by **Extreme Channels Prior** work, which combines dark and bright local extrema to handle cases where dark-channel-only assumptions are weak, especially bright or saturated content. This implementation:
+A second weight-free refinement motivated by **Extreme Channels Prior** work, which combines dark and bright local extrema to handle cases where dark-channel-only assumptions are weak, especially bright or saturated content. It computes local dark/bright extrema, gates detail recovery around informative regions, and projects each update back to the measured blur model using FFT data consistency.
 
-1. computes local dark and bright extrema;
-2. gates detail recovery more strongly where those extrema are informative;
-3. avoids aggressive global contrast stretching;
-4. projects every iteration back to the same observed blur model using FFT data consistency.
-
-The two new variants reuse the **same PSF estimated by the baseline**. That isolates the restoration-prior change and prevents the three-method benchmark from spending three times the cost on blind kernel estimation.
+Both new variants reuse the **same PSF estimated by the baseline**. That isolates the restoration-prior change and prevents the three-method benchmark from spending three times the cost on blind kernel estimation.
 
 ## Why the Python implementation is fast
 
 - **OpenCV** morphology, resampling, bilateral filtering and NLM.
-- **Numba** JIT compilation for the local-minimum mapping step.
+- **Numba** JIT compilation for local-minimum mapping.
 - **SciPy pocketfft** with FFT-friendly shapes and configurable CPU workers.
 - **NumPy** vectorized gradients/divergence and thresholding.
 - **float32** iterative buffers to reduce memory bandwidth.
-- Bulk dark-channel projection instead of repeated overlapping patch copies.
-- Shared kernel estimation for both new refinement methods.
+- Shared blind-kernel estimation for both refinement methods.
 
 ## Install
 
@@ -54,32 +48,18 @@ Python **3.13+** is the supported/tested runtime.
 
 ## CLI
 
-Baseline:
-
 ```bash
-dark-channel-deblur input.png output.png \
-  --method baseline \
-  --kernel-size 25 \
-  --kernel-output kernel.png
-```
+# Original dark-channel baseline
+dark-channel-deblur input.png baseline.png \
+  --method baseline --kernel-size 25 --kernel-output kernel.png
 
-Annealed Gaussian PnP:
+# Diffusion-inspired, weight-free refinement
+dark-channel-deblur input.png annealed.png \
+  --method annealed-pnp --kernel-size 25 --seed 7 --fast
 
-```bash
-dark-channel-deblur input.png output_pnp.png \
-  --method annealed-pnp \
-  --kernel-size 25 \
-  --seed 7 \
-  --fast
-```
-
-Extreme-channel guided refinement:
-
-```bash
-dark-channel-deblur input.png output_extreme.png \
-  --method extreme-channel \
-  --kernel-size 25 \
-  --fast
+# Dark + bright extreme-channel refinement
+dark-channel-deblur input.png extreme.png \
+  --method extreme-channel --kernel-size 25 --fast
 ```
 
 Important baseline parameters remain available directly: `--kernel-size`, `--gamma`, `--lambda-dark`, `--lambda-grad`, and `--iterations`.
@@ -109,21 +89,20 @@ write_image("extreme_channel.png", extreme)
 
 ## Full `dataset/image` Docker benchmark
 
-The repository contains **23 source images** under `dataset/image`. One command now tests every one of them:
+The repository contains **23 source images** under `dataset/image`. One command tests every one of them:
 
 ```bash
 docker compose run --rm test
 ```
 
-The Docker test performs three phases:
+The Docker test:
 
-1. verifies that all 23 supported source images are present;
-2. runs the unit and regression tests;
-3. processes every image using the baseline and both new refinement methods, then creates the final HTML/JSON report.
+1. verifies exactly 23 supported source images are present;
+2. runs all unit and regression tests;
+3. processes every image with baseline + Annealed Gaussian PnP + Extreme-Channel Guided;
+4. creates a final HTML and JSON report and verifies every expected output exists.
 
-For CI practicality, each source is resized **only in memory** to a maximum side of 192 pixels. The committed originals are never rewritten. The experiment therefore generates **69 restored outputs** (23 images × 3 methods) while estimating only **23 blind PSFs**, because both refinements share the corresponding baseline kernel.
-
-Generated output structure:
+For CI practicality, each source is resized **only in memory** to a maximum side of 192 pixels. The committed originals are never rewritten. The experiment generates **69 restored outputs** (23 × 3) while estimating only **23 blind PSFs**, because both refinements share the corresponding baseline kernel.
 
 ```text
 results/
@@ -137,7 +116,6 @@ results/
     │   ├── extreme_channel.png
     │   ├── interim.png
     │   └── kernel.png
-    ├── 02_.../
     └── ... 23 cases total
 ```
 
@@ -145,21 +123,22 @@ Open **`results/report.html`** after the Docker run. It contains aggregate metri
 
 ### Report metrics
 
-Most files in `dataset/image` are real/natural examples without paired clean ground truth, so the report does not invent PSNR/SSIM values for them. Instead it records:
+The 23-image release folder does **not** provide verified pixel-aligned clean targets for these cases. Similar-looking filenames must not be assumed to form ground-truth pairs, so this report intentionally does not calculate PSNR/SSIM.
 
-- **Reblur RMSE** — reblur the restored image using the shared estimated PSF and compare it with the observed input. Lower means stronger measurement consistency.
-- **Sobel sharpness** — mean gradient magnitude. Higher edge energy can indicate useful recovery but may also reward ringing, so it is a diagnostic rather than a stand-alone quality score.
-- **Laplacian MAD** — a high-frequency/noise diagnostic.
+Instead it reports:
+
+- **Reblur RMSE** — reblur the restored image with the shared estimated PSF and compare it with the observed input. Lower is better measurement consistency.
+- **RMSE gain vs baseline** — direct improvement in physical consistency for each new method.
+- **Sobel sharpness** and **sharpness change** — edge-energy diagnostics; higher can mean recovered detail or ringing.
+- **Laplacian MAD** and **noise change** — high-frequency/noise diagnostics that expose the sharpness/noise trade-off.
 - **Dark fraction / bright fraction** — local extreme-channel sparsity indicators.
-- **Runtime** for every method.
+- **Runtime** — both refinement-stage and end-to-end aggregate timing are stored in `report.json`.
 
-For the explicit blurred/clean pairs present in the folder—`26.blurred → 26` and `flower_blurred → flower`—the report additionally computes **PSNR and SSIM**.
-
-The 192-pixel CI resolution is for reproducible automated validation; it is not presented as a full-resolution SOTA benchmark.
+The 192-pixel working resolution is for reproducible automated validation; it is not presented as a full-resolution SOTA benchmark.
 
 ## MATLAB reference regression
 
-A same-input historical regression case remains under [`examples/real_img2`](examples/real_img2), including the authors' saved MATLAB result/kernel and previous Python full/fast snapshots.
+A same-input historical regression case remains under [`examples/real_img2`](examples/real_img2), including the authors' saved MATLAB result/kernel and previous Python full/fast snapshots. These values measure agreement with that MATLAB output, not ground-truth image quality.
 
 | Output | PSNR vs MATLAB output | SSIM vs MATLAB output | Kernel correlation |
 |---|---:|---:|---:|
@@ -167,19 +146,11 @@ A same-input historical regression case remains under [`examples/real_img2`](exa
 | Python `--fast` | 34.80 dB | 0.9756 | 0.9524 |
 | Blurred input | 25.03 dB | 0.7797 | — |
 
-Those are **agreement metrics against the authors' MATLAB output, not ground-truth quality metrics**.
-
 ## Tests and CI
-
-Run the unit tests directly:
 
 ```bash
 python -m pytest -q tests
-```
 
-Run the complete Docker validation:
-
-```bash
 docker compose build test
 docker compose run --rm test
 ```
@@ -187,8 +158,6 @@ docker compose run --rm test
 GitHub Actions uses **Python 3.13**. The Docker job fails if `dataset/image` does not contain exactly 23 supported images, if one of the three methods produces invalid output, if any per-image result/kernel is missing, or if the final report is incomplete. The complete `results/` directory is uploaded as the **`deblurring-full-dataset-report`** Actions artifact.
 
 ## Docker usage for your own image
-
-Create a `data/` directory containing `input.png`, then for example:
 
 ```bash
 docker compose run --rm deblur \
@@ -202,9 +171,9 @@ docker compose run --rm deblur \
 The baseline is a port of Pan et al. (CVPR 2016). The two additions are **new experimental variants in this repository**:
 
 - **Extreme-Channel Guided** is motivated by Yan et al., *Image Deblurring via Extreme Channels Prior*, CVPR 2017, which supplements dark-channel evidence with the bright channel.
-- **Annealed Gaussian PnP** is motivated by the structure of modern plug-and-play/diffusion restoration: progressively apply a denoising prior while repeatedly enforcing the known degradation model. It uses classical NLM rather than a learned diffusion checkpoint, so calling it a SOTA diffusion model would be incorrect.
+- **Annealed Gaussian PnP** is motivated by modern plug-and-play/diffusion restoration: progressively apply a denoising/image prior while repeatedly enforcing the known degradation model. It uses classical NLM rather than a learned diffusion checkpoint, so calling it a SOTA diffusion model would be incorrect.
 
-A future learned backend could replace NLM with a pretrained diffusion/score prior while keeping the same data-consistency interface. Any SOTA claim should then be evaluated on standard paired deblurring benchmarks at their intended resolution, with perceptual and distortion metrics, rather than on this 23-image qualitative release folder alone.
+A future learned backend could replace NLM with a pretrained diffusion/score prior while keeping the same data-consistency interface. Any SOTA claim should then be evaluated on standard paired deblurring benchmarks at their intended resolution with established distortion/perceptual metrics—not on this 23-image qualitative release folder alone.
 
 ## Notes on baseline fidelity
 
@@ -216,8 +185,6 @@ The baseline optimization objective and coarse-to-fine kernel-estimation sequenc
 Exact bit-for-bit MATLAB reproduction is not the goal.
 
 ## Citation
-
-If the baseline method is used in academic work, cite the original paper:
 
 ```bibtex
 @inproceedings{pan2016blind,
