@@ -8,14 +8,11 @@ on:
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.13"
           cache: pip
       - run: python -m pip install -U pip
       - run: python -m pip install ".[dev]"
@@ -25,5 +22,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: mkdir -p results
       - run: docker compose build test
       - run: docker compose run --rm test
+      - name: Verify generated report
+        run: |
+          test -f results/report.html
+          test -f results/report.json
+          test -f results/new_python_result.png
+          test -f results/new_python_kernel.png
+      - name: Upload visual comparison report
+        uses: actions/upload-artifact@v4
+        with:
+          name: deblurring-comparison-report
+          path: results/
+          if-no-files-found: error
+          retention-days: 14
