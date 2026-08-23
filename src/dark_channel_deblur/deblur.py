@@ -116,49 +116,70 @@ def estimate_blur_kernel(
     return kernel.astype(np.float32), np.clip(latent, 0.0, 1.0).astype(np.float32)
 
 
+def _candidate_score(
+    image: np.ndarray,
+    kernel: np.ndarray,
+    restored: np.ndarray,
+    config: DeblurConfig,
+) -> tuple[float, object]:
+    reblurred = reblur_image(restored, kernel, workers=config.fft_workers)
+    return restoration_score(image, restored, reblurred)
+
+
 def _restore_and_score(
     image: np.ndarray,
     kernel: np.ndarray,
     config: DeblurConfig,
 ) -> tuple[np.ndarray, float, str]:
-    """Restore with the PSF and select a conservative candidate without reference pixels."""
-    candidates: list[tuple[str, DeblurConfig]] = [("configured", config)]
-    if config.conservative_restoration:
-        candidates.extend(
-            [
-                (
-                    "conservative",
-                    replace(
-                        config,
-                        lambda_tv=max(config.lambda_tv * 2.0, 1e-3),
-                        lambda_l0=max(config.lambda_l0 * 2.0, 1e-3),
-                        weight_ring=min(config.weight_ring, 0.5),
-                    ),
-                ),
-                (
-                    "tv_safe",
-                    replace(
-                        config,
-                        lambda_tv=max(config.lambda_tv * 3.0, 2e-3),
-                        weight_ring=0.0,
-                    ),
-                ),
-            ]
-        )
-
-    best_image: np.ndarray | None = None
-    best_score = math.inf
+    """Run extra restoration candidates only when the configured one is suspicious."""
+    configured = ringing_artifacts_removal(image, kernel, config)
+    best_image = configured
+    best_score, diag = _candidate_score(image, kernel, configured, config)
     best_name = "configured"
-    for name, candidate_config in candidates:
-        restored = ringing_artifacts_removal(image, kernel, candidate_config)
-        reblurred = reblur_image(restored, kernel, workers=config.fft_workers)
-        score, _ = restoration_score(image, restored, reblurred)
-        if score < best_score:
-            best_image = restored
-            best_score = score
-            best_name = name
 
-    assert best_image is not None
+    suspicious = (
+        best_score > 0.03
+        or diag.clipping_growth > 0.04
+        or (diag.edge_ratio > 2.8 and diag.highpass_ratio > 4.0)
+        or diag.noise_ratio > 1.8
+    )
+    if not config.conservative_restoration or not suspicious:
+        return best_image.astype(np.float32), float(best_score), best_name
+
+    conservative_cfg = replace(
+        config,
+        lambda_tv=max(config.lambda_tv * 2.0, 1e-3),
+        lambda_l0=max(config.lambda_l0 * 2.0, 1e-3),
+        weight_ring=min(config.weight_ring, 0.5),
+    )
+    conservative = ringing_artifacts_removal(image, kernel, conservative_cfg)
+    conservative_score, conservative_diag = _candidate_score(
+        image, kernel, conservative, config
+    )
+    if conservative_score < best_score:
+        best_image = conservative
+        best_score = conservative_score
+        best_name = "conservative"
+        diag = conservative_diag
+
+    still_suspicious = (
+        best_score > 0.045
+        or diag.clipping_growth > 0.06
+        or (diag.edge_ratio > 3.0 and diag.highpass_ratio > 4.5)
+    )
+    if still_suspicious:
+        tv_safe_cfg = replace(
+            config,
+            lambda_tv=max(config.lambda_tv * 3.0, 2e-3),
+            weight_ring=0.0,
+        )
+        tv_safe = ringing_artifacts_removal(image, kernel, tv_safe_cfg)
+        tv_score, _ = _candidate_score(image, kernel, tv_safe, config)
+        if tv_score < best_score:
+            best_image = tv_safe
+            best_score = tv_score
+            best_name = "tv_safe"
+
     return best_image.astype(np.float32), float(best_score), best_name
 
 
@@ -168,9 +189,9 @@ def deblur_image(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Blind-deblur an RGB/gray float image and return result, kernel, interim latent.
 
-    Robust mode first estimates the configured PSF, selects a conservative final
-    restoration using blind diagnostics, and conditionally retries suspicious PSFs
-    with a gradient-only estimator. Legacy/reference pixels are never used.
+    Robust mode first estimates the configured PSF, conditionally selects a more
+    conservative final restoration, and retries suspicious PSFs with a gradient-only
+    estimator. Legacy/reference pixels are never used by inference or selection.
     """
     cfg = config or DeblurConfig()
     cfg.validate()
