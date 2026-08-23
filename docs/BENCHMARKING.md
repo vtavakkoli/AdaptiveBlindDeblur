@@ -1,16 +1,28 @@
 # Benchmarking protocol
 
-The official benchmark is:
+The repository's quality benchmark is:
 
 ```bash
 docker compose run --rm test
 ```
 
-It evaluates all 23 supported files under `dataset/image/` with the baseline, Annealed Gaussian PnP, and Extreme-Channel Guided methods.
+It evaluates all 23 supported files under `dataset/image/` with the Adaptive Blind Baseline, Annealed PnP Refinement, and Dual-Extreme Refinement.
+
+## Quality profile
+
+The Docker benchmark is intentionally different from CLI `--fast` preview mode. It runs the full blind optimization and reads per-image configuration from:
+
+```text
+dataset/benchmark_profiles.json
+```
+
+The profile defines PSF support and regularization parameters for each source. The file must contain exactly one profile for every benchmark image.
+
+No previous result image or previous kernel pixel values are used by inference.
 
 ## Native-resolution invariant
 
-Every method receives the decoded source at its original dimensions. The benchmark does not resize or crop sources, and it never resizes a historical reference to force a comparison.
+Every method receives the decoded source at its original dimensions. The benchmark does not resize or crop a source for evaluation.
 
 For every case:
 
@@ -20,47 +32,81 @@ annealed_pnp.shape    == source.shape
 extreme_channel.shape == source.shape
 ```
 
-A mismatch is a hard test failure.
+A mismatch is a hard failure. Internal FFT boundary extension is allowed only when the returned restoration is cropped back to the exact source dimensions.
 
-Internal FFT boundary extension is allowed only when the final restoration returns to the exact source dimensions.
+## PSF-support invariant
 
-## Historical MATLAB references
+For every case:
 
-For `dataset/image/<stem>.<ext>`, the benchmark looks for:
+```text
+estimated_kernel.shape == (profile.kernel_size, profile.kernel_size)
+```
+
+This is also a hard test failure. It prevents a benchmark from silently falling back to a small generic kernel for a long-motion source.
+
+## Legacy evaluation assets
+
+For `dataset/image/<stem>.<ext>`, the report may load:
 
 ```text
 dataset/results/<stem>_result.png
 dataset/results/<stem>_kernel.png
 ```
 
-A historical result is used for PSNR/SSIM only if its decoded dimensions exactly match the source. No interpolation is used.
+These files are **evaluation-only legacy snapshots**.
 
-These scores mean agreement with the historical MATLAB/release output for the same observed image. They are not clean-image ground-truth scores.
+Rules:
 
-A valid historical kernel may provide the intended odd square kernel size. Its pixel values are never passed into the Python deblurring methods. When the Python and historical kernels have equal dimensions, the report also records normalized correlation and L1 distance.
+- current methods run before legacy metrics are calculated;
+- legacy result pixels are never supplied to any restoration method;
+- legacy kernel pixel values are never supplied to blind PSF estimation;
+- a legacy result is compared only when its decoded dimensions exactly match the source;
+- references are never resized to manufacture comparability;
+- kernel correlation is calculated only for directly comparable support sizes.
 
-## Fairness rule
+PSNR/SSIM against a legacy output measure regression/fidelity to a previous saved result, not clean-image ground-truth quality.
 
-Each source gets one blind PSF estimated by the dark-channel baseline. Both new refinements reuse that exact PSF. This isolates restoration-prior differences from independent kernel-estimation differences.
+## Shared-PSF comparison
+
+Each source receives one blind PSF estimate from the Adaptive Blind Baseline. Both refinements reuse that PSF. This isolates changes caused by the restoration prior rather than mixing them with independent kernel-estimation differences.
+
+## Artifact guard
+
+Reblur RMSE is a physical-consistency diagnostic, but optimizing it alone can reward ringing or duplicated high-frequency structure.
+
+Both refinements therefore compare their high-frequency/noise diagnostic against the stable baseline. A candidate with excessive Laplacian-MAD growth is conservatively blended toward the baseline; a candidate that does not improve reblur consistency is rejected.
 
 ## Metrics
 
 The report records:
 
-- **Reblur RMSE**: `RMSE(reblur(restored, estimated_psf), observed)`. Lower means stronger measurement consistency.
-- **Sobel sharpness**: mean edge energy; useful as a diagnostic but capable of rewarding ringing.
-- **Laplacian MAD**: high-frequency/noise diagnostic.
-- **Dark/bright fractions**: local extreme-channel diagnostics.
-- **Runtime**: baseline stage, refinement stage, and end-to-end time.
-- **PSNR/SSIM vs historical MATLAB**: only for exact-dimension same-input references.
+- **Reblur RMSE** — `RMSE(reblur(restored, estimated_psf), observed)`.
+- **RMSE gain** — relative change from the baseline.
+- **Sobel sharpness** — edge-energy diagnostic.
+- **Laplacian MAD** — high-frequency/noise diagnostic.
+- **Runtime** — baseline stage, refinement stage, and aggregate time.
+- **PSNR/SSIM vs legacy** — exact-shape regression metrics only.
+- **Kernel correlation/L1** — only when current and legacy kernel supports match.
+
+No single diagnostic is treated as a perceptual-quality oracle.
 
 ## Reproducibility metadata
 
-`results/report.json` records the benchmark schema version, source SHA-256, exact source/output shapes, per-image kernel size and its provenance, method configuration, runtime, metrics, Python/NumPy/SciPy/OpenCV versions, Git commit, and UTC generation timestamp.
+`results/report.json` records:
+
+- schema version;
+- Git commit and UTC generation time;
+- Python/NumPy/SciPy/OpenCV versions;
+- source SHA-256;
+- native source/output shapes;
+- complete per-image benchmark profile;
+- current PSF shape, sum, and peak;
+- legacy-reference status;
+- timing and per-method metrics.
 
 ## Output contract
 
-A full run creates:
+A complete run creates:
 
 ```text
 results/report.html
@@ -68,23 +114,19 @@ results/report.json
 results/SUMMARY.md
 ```
 
-and, for every source, native-resolution `baseline.png`, `annealed_pnp.png`, `extreme_channel.png`, `interim.png`, `kernel.png`, an exact source copy, and compatible historical references when available.
+and one directory per source containing the exact source copy, three current restorations, interim latent image, current kernel, and compatible legacy assets when available.
 
-GitHub Actions verifies this contract after the Docker command completes.
+GitHub Actions verifies this contract after Docker completes.
 
-## Developer smoke tests
+## Developer smoke test
 
-For quick development only:
+For development only:
 
 ```bash
 python scripts/generate_report.py --limit 1
 ```
 
-The Docker/CI path never uses `--limit`; it always expects all 23 images.
-
-## Scope of claims
-
-This dataset is suitable for regression, same-input historical fidelity, physical consistency, runtime comparison, and qualitative inspection. A state-of-the-art claim should additionally be evaluated on standard paired deblurring benchmarks under their published protocols.
+The Docker/CI quality path never uses `--limit` and expects all 23 sources.
 
 ## Reproduce locally
 
