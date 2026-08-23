@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from dark_channel_deblur.kernel import adjust_psf_center, prune_kernel, threshold_gradients
+from dark_channel_deblur.kernel import (
+    adjust_psf_center,
+    init_kernel,
+    prune_kernel,
+    resize_kernel,
+    threshold_gradients,
+)
 
 
 def test_adjust_psf_center_moves_mass_toward_center() -> None:
@@ -22,17 +28,57 @@ def test_prune_kernel_removes_tiny_component() -> None:
     np.testing.assert_allclose(out.sum(), 1.0, atol=1e-6)
 
 
-def test_threshold_gradients_produces_nonzero_salient_edges() -> None:
-    image = np.zeros((32, 32), dtype=np.float32)
-    image[:, 16:] = 1.0
+def test_init_kernel_matches_matlab_release_coordinates() -> None:
+    actual = init_kernel(25)
+    expected = np.zeros((25, 25), dtype=np.float32)
+    # blind_deconv.m uses 1-based row/columns 12 and 12:13 for a 25px PSF.
+    expected[11, 11:13] = 0.5
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_resize_kernel_preserves_mass_and_requested_support() -> None:
+    kernel = np.zeros((7, 7), dtype=np.float32)
+    kernel[1:6, 2:5] = np.array(
+        [
+            [0.01, 0.02, 0.01],
+            [0.03, 0.08, 0.04],
+            [0.05, 0.20, 0.08],
+            [0.04, 0.15, 0.06],
+            [0.02, 0.10, 0.03],
+        ],
+        dtype=np.float32,
+    )
+    kernel /= kernel.sum()
+    resized = resize_kernel(kernel, np.sqrt(2.0), 9)
+    assert resized.shape == (9, 9)
+    assert np.all(resized >= 0)
+    np.testing.assert_allclose(resized.sum(), 1.0, atol=1e-6)
+
+
+def test_threshold_gradients_produces_nonzero_salient_edges_on_textured_image() -> None:
+    rng = np.random.default_rng(29)
+    image = rng.random((128, 128), dtype=np.float32)
     px, py, threshold = threshold_gradients(image, 5)
     assert threshold > 0
     assert np.count_nonzero(px) > 0
-    assert px.shape == py.shape == (31, 31)
+    assert np.count_nonzero(py) > 0
+    assert px.shape == py.shape == (127, 127)
+
+
+def test_single_orientation_can_keep_zero_matlab_histogram_threshold() -> None:
+    image = np.zeros((32, 32), dtype=np.float32)
+    image[:, 16:] = 1.0
+    px, py, threshold = threshold_gradients(image, 5)
+    # threshold_pxpy_v1 takes the minimum tail count across four orientation bins;
+    # a purely vertical synthetic edge does not populate all four bins.
+    assert threshold == 0.0
+    assert np.count_nonzero(px) > 0
+    assert np.count_nonzero(py) == 0
 
 
 def test_estimate_psf_recovers_synthetic_kernel() -> None:
     from scipy import fft
+
     from dark_channel_deblur.fft_utils import psf2otf
     from dark_channel_deblur.kernel import estimate_psf, valid_gradients
 
