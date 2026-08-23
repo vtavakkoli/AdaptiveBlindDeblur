@@ -61,7 +61,7 @@ def restoration_score(
 ) -> tuple[float, ArtifactDiagnostics]:
     """Return a blind quality score balancing blur fidelity and artifact growth.
 
-    The score deliberately avoids legacy/ground-truth pixels.  It penalizes a common
+    The score deliberately avoids legacy/ground-truth pixels. It penalizes a common
     blind-deconvolution failure mode where a latent image reblurs well but contains
     duplicated contours, clipped highlights, ringing, or excessive high frequencies.
     Lower is better.
@@ -108,12 +108,11 @@ def should_retry_kernel(
         return True
     if diag.edge_ratio > 3.0 and diag.highpass_ratio > 4.0:
         return True
-    # Long-support kernels that barely change edge energy are frequently a wrong
-    # trajectory rather than a genuinely solved long-motion blur.
-    if kernel_size >= 65 and diag.edge_ratio < 1.20:
+    # Large-support kernels that recover very little additional edge energy can look
+    # numerically plausible while following the wrong motion trajectory.  Retrying
+    # these cases catches under-corrected failures such as weak/incorrect long PSFs.
+    if kernel_size >= 65 and diag.edge_ratio < 1.80:
         return True
-    # Large-support / gamma-compressed difficult cases get a retry only when the
-    # primary solution is already a poor fit according to the blind score.
     if kernel_size >= 65 and blind_score > 0.045:
         return True
     return False
