@@ -48,7 +48,7 @@ def _find_first_min_targets(
 
 
 def dark_channel(image: np.ndarray, patch_size: int = 35) -> np.ndarray:
-    """Compute the local dark channel using OpenCV's optimized erosion."""
+    """Compute a local minimum channel using optimized morphology."""
     if patch_size % 2 == 0 or patch_size < 1:
         raise ValueError("patch_size must be a positive odd integer")
     arr = np.asarray(image, dtype=np.float32)
@@ -63,12 +63,11 @@ def project_dark_channel(
     beta_pixel: float,
     patch_size: int = 35,
 ) -> np.ndarray:
-    """Fast auxiliary-variable projection for the L0 dark-channel prior.
+    """Project selected local minima toward a sparse-extrema auxiliary image.
 
-    Windows whose dark-channel value is below sqrt(lambda/beta) select one
-    local minimum. Those selected pixels are zeroed in one bulk projection.
-    This avoids the MATLAB implementation's repeated patch copying and makes
-    the dominant prior update practical in Python.
+    Windows below the current threshold select one local minimum. Selected
+    pixels are updated in one bulk projection so the dominant prior step remains
+    practical at native image resolution.
     """
     arr = np.ascontiguousarray(image, dtype=np.float32)
     minima = dark_channel(arr, patch_size)
@@ -88,13 +87,17 @@ def project_dark_channel(
     valid = ys >= 0
     yy = ys[valid] - radius
     xx = xs[valid] - radius
-    inside = (yy >= radius) & (yy < arr.shape[0] - radius) & (xx >= radius) & (xx < arr.shape[1] - radius)
+    inside = (
+        (yy >= radius)
+        & (yy < arr.shape[0] - radius)
+        & (xx >= radius)
+        & (xx < arr.shape[1] - radius)
+    )
     yy = yy[inside]
     xx = xx[inside]
     if arr.ndim == 2:
         out[yy, xx] = 0.0
     else:
-        # Select the darkest channel at each mapped pixel.
         cc = np.argmin(out[yy, xx, :], axis=1)
         out[yy, xx, cc] = 0.0
     return out
