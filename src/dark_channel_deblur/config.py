@@ -19,6 +19,8 @@ class DeblurConfig:
     lambda_tv: float = 3e-3
     lambda_l0: float = 5e-4
     weight_ring: float = 1.0
+    saturated: bool = False
+    saturation_iterations: int = 50
 
     # Sparse local-extrema / gradient optimization settings.
     dark_patch_size: int = 35
@@ -26,9 +28,8 @@ class DeblurConfig:
     beta_max_grad: float = 1e5
     beta_max_pixel: float = 8.0
 
-    # Robust inference. A suspicious primary solution can be re-estimated using a
-    # gradient-only PSF candidate; final deconvolution is selected from conservative
-    # regularization candidates using blind fidelity + artifact diagnostics.
+    # Robust inference is optional and is kept separate from MATLAB-equivalence
+    # fixes. Benchmark profiles can disable these heuristics when measuring parity.
     robust_selection: bool = True
     retry_gradient_only: bool = True
     conservative_restoration: bool = True
@@ -53,3 +54,5 @@ class DeblurConfig:
             raise ValueError("kappa must be > 1")
         if self.prescale <= 0:
             raise ValueError("prescale must be > 0")
+        if self.saturation_iterations < 1:
+            raise ValueError("saturation_iterations must be >= 1")
