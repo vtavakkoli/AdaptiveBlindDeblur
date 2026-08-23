@@ -4,10 +4,11 @@ services:
     entrypoint: ["python", "scripts/run_docker_test.py"]
     volumes:
       - ./results:/app/results
+      - ./dataset/image:/app/dataset/image
 
   deblur:
     build: .
     volumes:
       - ./data:/data
     # Example:
-    # docker compose run --rm deblur /data/input.png /data/output.png --kernel-size 25 --fast
+    # docker compose run --rm deblur /data/input.png /data/output.png --method annealed-pnp --kernel-size 25 --fast
