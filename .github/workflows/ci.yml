@@ -20,21 +20,34 @@ jobs:
 
   docker-compose:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - run: mkdir -p results
       - run: docker compose build test
       - run: docker compose run --rm test
-      - name: Verify generated report
+      - name: Verify full dataset report
         run: |
           test -f results/report.html
           test -f results/report.json
-          test -f results/new_python_result.png
-          test -f results/new_python_kernel.png
-      - name: Upload visual comparison report
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("results/report.json").read_text())
+          assert report["dataset"]["image_count"] == 23
+          assert len(report["images"]) == 23
+          assert set(report["aggregate"]) == {"baseline", "annealed_pnp", "extreme_channel"}
+          for case in report["images"]:
+              d = Path("results") / case["result_dir"]
+              for name in ("input.png", "baseline.png", "annealed_pnp.png", "extreme_channel.png", "kernel.png"):
+                  assert (d / name).is_file(), d / name
+          print("Verified 23 images, 69 restored outputs, and 23 shared PSFs")
+          PY
+      - name: Upload full visual comparison report
         uses: actions/upload-artifact@v4
         with:
-          name: deblurring-comparison-report
+          name: deblurring-full-dataset-report
           path: results/
           if-no-files-found: error
           retention-days: 14
