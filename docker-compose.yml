@@ -1,8 +1,9 @@
 services:
   test:
     build: .
-    entrypoint: ["python", "-m", "pytest"]
-    command: ["-q", "tests"]
+    entrypoint: ["python", "scripts/run_docker_test.py"]
+    volumes:
+      - ./results:/app/results
 
   deblur:
     build: .

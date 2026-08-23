@@ -12,7 +12,14 @@ RUN apt-get update \
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
-COPY tests ./tests
 RUN pip install --no-cache-dir ".[dev]"
+
+# Regression assets and test/report tooling are intentionally copied into the
+# image: docker-compose's test service validates the real reference images and
+# writes a portable comparison report to /app/results.
+COPY tests ./tests
+COPY examples ./examples
+COPY scripts ./scripts
+RUN mkdir -p /app/results
 
 ENTRYPOINT ["dark-channel-deblur"]
