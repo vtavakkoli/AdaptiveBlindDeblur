@@ -25,7 +25,7 @@ The first call includes Numba compilation overhead; later calls reuse the compil
 python -m pip install -e ".[dev]"
 ```
 
-Python 3.11+ is supported.
+Python **3.13+** is the supported/tested runtime.
 
 ## CLI
 
@@ -58,7 +58,7 @@ write_image("output.png", result)
 
 ## MATLAB reference comparison
 
-A same-input regression case is included under [`examples/real_img2`](examples/real_img2). It contains the blurred test image preview, the authors' saved MATLAB result and kernel, and the Python full/fast results and kernels.
+A same-input regression case is included under [`examples/real_img2`](examples/real_img2). It contains the blurred test image preview, the authors' saved MATLAB result and kernel, and the previous Python full/fast results and kernels.
 
 | Output | PSNR vs MATLAB output | SSIM vs MATLAB output | Kernel correlation |
 |---|---:|---:|---:|
@@ -66,24 +66,49 @@ A same-input regression case is included under [`examples/real_img2`](examples/r
 | Python `--fast` | 34.80 dB | 0.9756 | 0.9524 |
 | Blurred input | 25.03 dB | 0.7797 | — |
 
-These are **agreement metrics against the authors' released MATLAB result, not ground-truth quality metrics**. The measurements were computed from the lossless 360×480 PNG sources before the compact repository previews were encoded. See [`examples/real_img2/README.md`](examples/real_img2/README.md) and [`metrics.json`](examples/real_img2/metrics.json).
+These are **agreement metrics against the authors' released MATLAB result, not ground-truth quality metrics**. The historical measurements were computed from the original 360×480 sources; compact preview assets are stored in the repository for fast CI regression checks. See [`examples/real_img2/README.md`](examples/real_img2/README.md) and [`metrics.json`](examples/real_img2/metrics.json).
 
-## Tests
+## Tests and visual report
 
-Run the unit, synthetic pipeline, and reference-regression tests locally:
+Run the unit and regression tests directly:
 
 ```bash
 python -m pytest -q tests
 ```
 
-Or validate the exact containerized environment:
+For the complete reproducible validation, use Docker Compose:
 
 ```bash
 docker compose build test
 docker compose run --rm test
 ```
 
-GitHub Actions runs both native Python tests (3.11 and 3.13) and the Docker Compose test service on every pull request.
+The Docker test now performs the full validation workflow:
+
+1. runs the unit/synthetic/reference regression tests;
+2. deblurs the included `real_img2` test image again inside the container;
+3. writes the fresh result, interim latent image, and estimated kernel into `results/`;
+4. compares the new output with the original MATLAB result and the previous Python full/fast snapshots;
+5. computes PSNR, SSIM, kernel correlation, and kernel L1 distance;
+6. generates a self-contained visual comparison at **`results/report.html`** plus machine-readable **`results/report.json`**.
+
+Typical generated files are:
+
+```text
+results/
+├── report.html
+├── report.json
+├── new_python_result.png
+├── new_python_interim.png
+├── new_python_kernel.png
+├── input.jpg
+├── matlab_reference.jpg
+├── previous_python_full.jpg
+├── previous_python_fast.jpg
+└── *_kernel.png
+```
+
+GitHub Actions uses **Python 3.13** and also runs this Docker Compose workflow. The generated `results/` directory is uploaded as the `deblurring-comparison-report` CI artifact, so the HTML report and images can be inspected after each run.
 
 ## Docker usage
 
