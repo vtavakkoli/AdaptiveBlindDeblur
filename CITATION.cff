@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the repository and the original dark-channel deblurring paper."
+title: "Dark Channel Deblur: Native-Resolution Python Benchmark and Research Refinements"
+type: software
+authors:
+  - family-names: Tavakkoli
+    given-names: Vahid
+repository-code: "https://github.com/vtavakkoli/debluring"
+version: 0.3.0
+keywords:
+  - blind image deblurring
+  - dark channel prior
+  - image restoration
+  - plug-and-play
+  - computer vision
+preferred-citation:
+  type: conference-paper
+  title: "Blind Image Deblurring Using Dark Channel Prior"
+  authors:
+    - family-names: Pan
+      given-names: Jinshan
+    - family-names: Sun
+      given-names: Deqing
+    - family-names: Pfister
+      given-names: Hanspeter
+    - family-names: Yang
+      given-names: Ming-Hsuan
+  conference:
+    name: "IEEE Conference on Computer Vision and Pattern Recognition (CVPR)"
+  year: 2016

@@ -7,7 +7,4 @@ __pycache__
 htmlcov
 *.pyc
 results
-dataset/BlurryImages
-dataset/dataset_results_eccv12
-dataset/dataset_results_levin
-dataset/results
+dataset

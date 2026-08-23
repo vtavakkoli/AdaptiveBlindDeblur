@@ -5,49 +5,95 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unit-tests:
+    name: Python 3.13 quality gate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
-      - run: python -m pip install -U pip
-      - run: python -m pip install ".[dev]"
-      - run: python -m pytest -q tests
+      - name: Install package and development tools
+        run: |
+          python -m pip install -U pip
+          python -m pip install ".[dev]"
+      - name: Lint
+        run: python -m ruff check src tests scripts
+      - name: Unit and regression tests
+        run: python -m pytest -q tests
 
   docker-compose:
+    name: Native-resolution benchmark
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - run: mkdir -p results
-      - run: docker compose build test
-      - run: docker compose run --rm test
-      - name: Verify full dataset report
+      - name: Prepare output directory
+        run: mkdir -p results
+      - name: Build benchmark container
+        run: docker compose build test
+      - name: Run complete native-resolution benchmark
+        run: docker compose run --rm test
+      - name: Verify benchmark contract
         run: |
           test -f results/report.html
           test -f results/report.json
+          test -f results/SUMMARY.md
           python - <<'PY'
           import json
           from pathlib import Path
 
+          methods = {"baseline", "annealed_pnp", "extreme_channel"}
           report = json.loads(Path("results/report.json").read_text())
-          assert report["dataset"]["image_count"] == 23
+          dataset = report["dataset"]
+          assert dataset["image_count"] == 23
+          assert dataset["native_resolution"] is True
+          assert dataset["resizing_applied"] is False
+          assert report["historical_reference"]["resampling_permitted"] is False
           assert len(report["images"]) == 23
-          assert set(report["aggregate"]) == {"baseline", "annealed_pnp", "extreme_channel"}
+          assert set(report["aggregate"]) == methods
+
           for case in report["images"]:
-              d = Path("results") / case["result_dir"]
-              for name in ("input.png", "baseline.png", "annealed_pnp.png", "extreme_channel.png", "kernel.png"):
-                  assert (d / name).is_file(), d / name
-          print("Verified 23 images, 69 restored outputs, and 23 shared PSFs")
+              assert case["native_resolution"] is True
+              assert case["resizing_applied"] is False
+              source_shape = case["source_shape"]
+              for method in methods:
+                  assert case["output_shapes"][method] == source_shape, (case["name"], method)
+
+              directory = Path("results") / case["result_dir"]
+              required = {
+                  case["source_copy"],
+                  "baseline.png",
+                  "annealed_pnp.png",
+                  "extreme_channel.png",
+                  "interim.png",
+                  "kernel.png",
+              }
+              for name in required:
+                  assert (directory / name).is_file(), directory / name
+
+          print(
+              "Verified 23 native-resolution sources, 69 restorations, "
+              "23 shared PSFs, and zero benchmark resizing."
+          )
           PY
-      - name: Upload full visual comparison report
+      - name: Publish benchmark summary
+        run: cat results/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload native-resolution comparison report
         uses: actions/upload-artifact@v4
         with:
-          name: deblurring-full-dataset-report
+          name: deblurring-native-resolution-report
           path: results/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+          compression-level: 6
