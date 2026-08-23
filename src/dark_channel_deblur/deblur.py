@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 import cv2
 import numpy as np
@@ -18,14 +19,21 @@ from .kernel import (
     valid_gradients,
 )
 from .optimization import l0_deblur_dark_channel, l0_restoration, ringing_artifacts_removal
+from .quality import restoration_score, should_retry_kernel
+from .refinement import reblur_image
 
 
 def _downsample(image: np.ndarray, ratio: float) -> np.ndarray:
     if ratio == 1.0:
         return image.copy()
-    # Gaussian anti-aliasing followed by area resampling is fast and robust.
     sigma = max(0.01, 1.0 / math.pi * ratio)
-    blurred = cv2.GaussianBlur(image, (0, 0), sigmaX=sigma, sigmaY=sigma, borderType=cv2.BORDER_REPLICATE)
+    blurred = cv2.GaussianBlur(
+        image,
+        (0, 0),
+        sigmaX=sigma,
+        sigmaY=sigma,
+        borderType=cv2.BORDER_REPLICATE,
+    )
     h = max(2, int(round(image.shape[0] * ratio)))
     w = max(2, int(round(image.shape[1] * ratio)))
     return cv2.resize(blurred, (w, h), interpolation=cv2.INTER_AREA)
@@ -66,7 +74,6 @@ def estimate_blur_kernel(
             kernel = resize_kernel(kernel, 1.0 / ratio, size)
         ys = _downsample(y, float(scale_values[scale_idx]))
 
-        # Pad once per scale. All latent updates reuse the same FFT-friendly shape.
         target = fast_shape(ys.shape, kernel.shape)
         padded = wrap_boundary(ys, target)
         bx, by = valid_gradients(padded[: ys.shape[0], : ys.shape[1]])
@@ -109,11 +116,62 @@ def estimate_blur_kernel(
     return kernel.astype(np.float32), np.clip(latent, 0.0, 1.0).astype(np.float32)
 
 
+def _restore_and_score(
+    image: np.ndarray,
+    kernel: np.ndarray,
+    config: DeblurConfig,
+) -> tuple[np.ndarray, float, str]:
+    """Restore with the PSF and select a conservative candidate without reference pixels."""
+    candidates: list[tuple[str, DeblurConfig]] = [("configured", config)]
+    if config.conservative_restoration:
+        candidates.extend(
+            [
+                (
+                    "conservative",
+                    replace(
+                        config,
+                        lambda_tv=max(config.lambda_tv * 2.0, 1e-3),
+                        lambda_l0=max(config.lambda_l0 * 2.0, 1e-3),
+                        weight_ring=min(config.weight_ring, 0.5),
+                    ),
+                ),
+                (
+                    "tv_safe",
+                    replace(
+                        config,
+                        lambda_tv=max(config.lambda_tv * 3.0, 2e-3),
+                        weight_ring=0.0,
+                    ),
+                ),
+            ]
+        )
+
+    best_image: np.ndarray | None = None
+    best_score = math.inf
+    best_name = "configured"
+    for name, candidate_config in candidates:
+        restored = ringing_artifacts_removal(image, kernel, candidate_config)
+        reblurred = reblur_image(restored, kernel, workers=config.fft_workers)
+        score, _ = restoration_score(image, restored, reblurred)
+        if score < best_score:
+            best_image = restored
+            best_score = score
+            best_name = name
+
+    assert best_image is not None
+    return best_image.astype(np.float32), float(best_score), best_name
+
+
 def deblur_image(
     image: np.ndarray,
     config: DeblurConfig | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Blind-deblur an RGB/gray float image and return result, kernel, interim latent."""
+    """Blind-deblur an RGB/gray float image and return result, kernel, interim latent.
+
+    Robust mode first estimates the configured PSF, selects a conservative final
+    restoration using blind diagnostics, and conditionally retries suspicious PSFs
+    with a gradient-only estimator. Legacy/reference pixels are never used.
+    """
     cfg = config or DeblurConfig()
     cfg.validate()
     arr = np.asarray(image, dtype=np.float32)
@@ -123,6 +181,33 @@ def deblur_image(
         gray = arr
     else:
         raise ValueError("image must be HxW or HxWx3")
+
     kernel, interim = estimate_blur_kernel(gray, cfg)
-    result = ringing_artifacts_removal(arr, kernel, cfg)
-    return result.astype(np.float32), kernel, interim
+    result, primary_score, _ = _restore_and_score(arr, kernel, cfg)
+
+    if (
+        cfg.robust_selection
+        and cfg.retry_gradient_only
+        and cfg.lambda_dark != 0
+        and should_retry_kernel(
+            arr,
+            result,
+            kernel,
+            kernel_size=cfg.kernel_size,
+            blind_score=primary_score,
+        )
+    ):
+        retry_cfg = replace(
+            cfg,
+            lambda_dark=0.0,
+            gamma_correct=1.0,
+            retry_gradient_only=False,
+        )
+        retry_kernel, retry_interim = estimate_blur_kernel(gray, retry_cfg)
+        retry_result, retry_score, _ = _restore_and_score(arr, retry_kernel, retry_cfg)
+        if retry_score < primary_score * 0.97:
+            result = retry_result
+            kernel = retry_kernel
+            interim = retry_interim
+
+    return result.astype(np.float32), kernel.astype(np.float32), interim.astype(np.float32)
