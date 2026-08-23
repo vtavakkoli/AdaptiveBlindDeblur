@@ -2,7 +2,10 @@ services:
   test:
     build: .
     entrypoint: ["python", "scripts/run_docker_test.py"]
+    environment:
+      BENCHMARK_GIT_COMMIT: ${GITHUB_SHA:-local}
     volumes:
+      - ./dataset:/app/dataset:ro
       - ./results:/app/results
 
   deblur:
@@ -10,4 +13,4 @@ services:
     volumes:
       - ./data:/data
     # Example:
-    # docker compose run --rm deblur /data/input.png /data/output.png --kernel-size 25 --fast
+    # docker compose run --rm deblur /data/input.png /data/output.png --method annealed-pnp --kernel-size 25
