@@ -1,7 +1,9 @@
-# CI image dataset
+# Full image-folder benchmark
 
-`docker compose run --rm test` benchmarks every image extracted into `dataset/image/`.
+`docker compose run --rm test` benchmarks every supported image from the `image/` folder in the authors' official CVPR 2016 dark-channel deblurring code release.
 
-The repository stores `dataset_images_ci.zip`, a compact 192 px preview set derived from every image in the `image/` folder of the supplied CVPR 2016 dark-channel deblurring release. Keeping the CI copies compact makes the full multi-method benchmark reproducible on GitHub Actions and laptops. The original filenames are preserved.
+`prepare_dataset.py` downloads the official `cvpr16_deblurring_code_v1.zip` linked from Jinshan Pan's project page, extracts all **23** supported images into `dataset/image/`, and creates bounded **192 px** lossless working copies for CI. The original stems are preserved. The source images themselves are not duplicated in Git.
 
-The Docker test extracts the archive automatically before running the benchmark. Generated benchmark outputs are written to `results/`.
+The resize is only for practical, deterministic CI runtime; it is not presented as the paper's full-resolution quantitative benchmark. Generated outputs and the HTML/JSON comparison are written to `results/`.
+
+The benchmark runs the baseline DCP restoration plus both research refinements for every input. The two refinements reuse the baseline's estimated PSF so their added restoration prior is compared under the same blur model.
