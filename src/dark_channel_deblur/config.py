@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 @dataclass(slots=True)
 class DeblurConfig:
-    """Configuration for blind kernel estimation and final deconvolution."""
+    """Configuration for blind PSF estimation and final deconvolution."""
 
     kernel_size: int = 25
     lambda_dark: float = 4e-3
@@ -15,18 +15,18 @@ class DeblurConfig:
     k_thresh: float = 20.0
     prescale: float = 1.0
 
-    # Non-blind deconvolution parameters used by the original demo.
+    # Final restoration regularization.
     lambda_tv: float = 3e-3
     lambda_l0: float = 5e-4
     weight_ring: float = 1.0
 
-    # Dark-channel prior settings. The paper's released code fixes this at 35.
+    # Sparse local-extrema / gradient optimization settings.
     dark_patch_size: int = 35
     kappa: float = 2.0
     beta_max_grad: float = 1e5
     beta_max_pixel: float = 8.0
 
-    # Optional caps are useful for fast previews and deterministic unit tests.
+    # Optional caps are intended only for previews and small unit tests.
     max_grad_steps: int | None = None
     max_dark_steps: int | None = None
 
