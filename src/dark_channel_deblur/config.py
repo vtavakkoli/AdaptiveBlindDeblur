@@ -26,6 +26,13 @@ class DeblurConfig:
     beta_max_grad: float = 1e5
     beta_max_pixel: float = 8.0
 
+    # Robust inference. A suspicious primary solution can be re-estimated using a
+    # gradient-only PSF candidate; final deconvolution is selected from conservative
+    # regularization candidates using blind fidelity + artifact diagnostics.
+    robust_selection: bool = True
+    retry_gradient_only: bool = True
+    conservative_restoration: bool = True
+
     # Optional caps are intended only for previews and small unit tests.
     max_grad_steps: int | None = None
     max_dark_steps: int | None = None
