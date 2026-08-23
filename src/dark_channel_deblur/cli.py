@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("baseline", "annealed-pnp", "extreme-channel"),
         default="baseline",
         help=(
-            "baseline=full blind restoration, annealed-pnp=stochastic guarded refinement, "
+            "baseline=robust blind restoration, annealed-pnp=stochastic guarded refinement, "
             "extreme-channel=dual-extreme guarded refinement"
         ),
     )
@@ -38,9 +38,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lambda-l0", type=float, default=5e-4)
     parser.add_argument("--ring-weight", type=float, default=1.0)
     parser.add_argument(
+        "--no-robust",
+        action="store_true",
+        help="Disable PSF retry and conservative restoration selection.",
+    )
+    parser.add_argument(
         "--fast",
         action="store_true",
-        help="Preview mode: cap optimization loops. Do not use for quality benchmarking.",
+        help="Preview mode: cap optimization loops and disable robust retries.",
     )
     parser.add_argument("--seed", type=int, default=0, help="Seed for annealed-pnp candidates")
     parser.add_argument("--opencv-threads", type=int, default=0, help="0 lets OpenCV decide")
@@ -51,6 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.opencv_threads > 0:
         cv2.setNumThreads(args.opencv_threads)
+    robust = not args.no_robust and not args.fast
     cfg = DeblurConfig(
         kernel_size=args.kernel_size,
         gamma_correct=args.gamma,
@@ -60,6 +66,9 @@ def main(argv: list[str] | None = None) -> int:
         lambda_tv=args.lambda_tv,
         lambda_l0=args.lambda_l0,
         weight_ring=args.ring_weight,
+        robust_selection=robust,
+        retry_gradient_only=robust,
+        conservative_restoration=robust,
         max_grad_steps=12 if args.fast else None,
         max_dark_steps=5 if args.fast else None,
     )

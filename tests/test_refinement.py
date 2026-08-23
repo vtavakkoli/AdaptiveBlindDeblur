@@ -91,15 +91,11 @@ def test_extreme_channel_refinement_is_finite_and_data_consistent() -> None:
     assert _residual(refined, blurred, kernel) < 0.08
 
 
-def test_refinements_do_not_trade_tiny_fidelity_gain_for_unbounded_noise() -> None:
+def test_refinements_reject_large_noise_growth() -> None:
     image, kernel = _sample()
     observed = reblur_image(image, kernel, workers=1)
-
-    # Use the observed image itself as a deliberately conservative initial point.
-    # Refinements may improve consistency, but their final safety guard must keep
-    # high-frequency amplification bounded relative to that starting point.
     initial = observed.copy()
-    base_noise = max(_noise_mad(initial), 0.0025)
+    base_noise = max(_noise_mad(initial), 5e-4)
     base_residual = _residual(initial, observed, kernel)
 
     outputs = [
@@ -124,4 +120,4 @@ def test_refinements_do_not_trade_tiny_fidelity_gain_for_unbounded_noise() -> No
 
     for output in outputs:
         assert _residual(output, observed, kernel) <= base_residual + 1e-6
-        assert _noise_mad(output) <= base_noise * 4.0
+        assert _noise_mad(output) <= base_noise * 2.0

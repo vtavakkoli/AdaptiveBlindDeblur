@@ -7,6 +7,7 @@ import numpy as np
 from scipy import fft
 
 from .fft_utils import psf2otf
+from .quality import clipping_fraction, edge_energy, highpass_rms, noise_mad, restoration_score
 
 
 def _pad_for_kernel(image: np.ndarray, kernel: np.ndarray) -> tuple[np.ndarray, int, int]:
@@ -87,15 +88,6 @@ def _nlm_gaussian_denoiser(image: np.ndarray, sigma: float) -> np.ndarray:
     return out.astype(np.float32) / 255.0
 
 
-def _noise_mad(image: np.ndarray) -> float:
-    arr = np.asarray(image, dtype=np.float32)
-    if arr.ndim == 3:
-        arr = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
-    lap = cv2.Laplacian(arr, cv2.CV_32F)
-    median = float(np.median(lap))
-    return float(np.median(np.abs(lap - median)))
-
-
 def _rmse(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.sqrt(np.mean((np.asarray(a, np.float32) - np.asarray(b, np.float32)) ** 2)))
 
@@ -108,37 +100,49 @@ def _artifact_safe_blend(
     *,
     workers: int,
 ) -> np.ndarray:
-    """Keep a refinement only to the extent that fidelity improves without noise explosion.
-
-    Blind deconvolution is prone to a failure mode where a candidate achieves a lower
-    reblur residual by creating ringing, duplicated edges, or high-frequency noise.
-    This guard measures both effects and smoothly backs the candidate toward the
-    stable initial restoration instead of accepting the artifact-heavy result.
-    """
+    """Reject or attenuate refinements that buy residual gain with visible artifacts."""
     y = np.asarray(observed, dtype=np.float32)
     base = np.clip(np.asarray(initial, dtype=np.float32), 0.0, 1.0)
     cand = np.clip(np.asarray(candidate, dtype=np.float32), 0.0, 1.0)
 
-    base_rmse = _rmse(reblur_image(base, kernel, workers=workers), y)
-    cand_rmse = _rmse(reblur_image(cand, kernel, workers=workers), y)
-    if not np.isfinite(cand_rmse) or cand_rmse >= base_rmse * 0.999:
+    base_reblur = reblur_image(base, kernel, workers=workers)
+    cand_reblur = reblur_image(cand, kernel, workers=workers)
+    base_rmse = _rmse(base_reblur, y)
+    cand_rmse = _rmse(cand_reblur, y)
+    if not np.isfinite(cand_rmse) or cand_rmse >= base_rmse * 0.997:
+        return base.copy()
+
+    base_score, _ = restoration_score(y, base, base_reblur)
+    cand_score, _ = restoration_score(y, cand, cand_reblur)
+    if cand_score >= base_score * 0.995:
         return base.copy()
 
     relative_gain = (base_rmse - cand_rmse) / max(base_rmse, 1e-8)
-    base_noise = max(_noise_mad(base), 0.0025)
-    candidate_noise = _noise_mad(cand)
-    noise_ratio = candidate_noise / base_noise
+    noise_ratio = noise_mad(cand) / max(noise_mad(base), 5e-4)
+    highpass_ratio = highpass_rms(cand) / max(highpass_rms(base), 2e-3)
+    edge_ratio = edge_energy(cand) / max(edge_energy(base), 0.02)
+    clip_growth = max(0.0, clipping_fraction(cand) - clipping_fraction(base))
 
-    # A 20% fidelity gain may use the whole candidate if the high-frequency
-    # diagnostic remains controlled. Small gains and large noise ratios are blended
-    # conservatively. Squaring the noise attenuation strongly suppresses ringing.
-    fidelity_alpha = float(np.clip(relative_gain / 0.20, 0.10, 1.0))
-    noise_alpha = 1.0 if noise_ratio <= 1.8 else float((1.8 / noise_ratio) ** 2)
-    alpha = float(np.clip(fidelity_alpha * noise_alpha, 0.0, 1.0))
+    # Larger fidelity gains are allowed somewhat more detail, but never the 10x-30x
+    # high-frequency explosions seen in earlier benchmark runs.
+    allowed_noise = 1.20 + 0.65 * min(relative_gain / 0.30, 1.0)
+    allowed_highpass = 1.20 + 0.55 * min(relative_gain / 0.30, 1.0)
+    if noise_ratio > allowed_noise * 1.35:
+        return base.copy()
+    if highpass_ratio > allowed_highpass * 1.35:
+        return base.copy()
+    if edge_ratio > 1.55 or clip_growth > 0.025:
+        return base.copy()
+
+    fidelity_alpha = float(np.clip(relative_gain / 0.18, 0.10, 1.0))
+    noise_alpha = min(1.0, allowed_noise / max(noise_ratio, 1e-8))
+    highpass_alpha = min(1.0, allowed_highpass / max(highpass_ratio, 1e-8))
+    alpha = float(np.clip(fidelity_alpha * noise_alpha * highpass_alpha, 0.0, 1.0))
 
     blended = np.clip(base + alpha * (cand - base), 0.0, 1.0).astype(np.float32)
-    blended_rmse = _rmse(reblur_image(blended, kernel, workers=workers), y)
-    if blended_rmse > base_rmse:
+    blended_reblur = reblur_image(blended, kernel, workers=workers)
+    blended_score, _ = restoration_score(y, blended, blended_reblur)
+    if blended_score >= base_score:
         return base.copy()
     return blended
 
@@ -171,15 +175,13 @@ def annealed_pnp_refine(
         rho = 0.05 + 0.10 * index / max(steps - 1, 1)
         best_score = math.inf
         best = x
-        noise_floor = max(_noise_mad(x), 0.0025)
         for _ in range(candidates):
             noise = rng.normal(0.0, sigma, x.shape).astype(np.float32)
             noisy = np.clip(x + noise, 0.0, 1.0)
             prior = _nlm_gaussian_denoiser(noisy, float(sigma))
             candidate = _data_consistency(y, prior, kernel, rho, workers=workers)
-            residual = _rmse(reblur_image(candidate, kernel, workers=workers), y)
-            noise_ratio = _noise_mad(candidate) / noise_floor
-            score = residual + 0.002 * max(0.0, noise_ratio - 1.8) ** 2
+            reblurred = reblur_image(candidate, kernel, workers=workers)
+            score, _ = restoration_score(y, candidate, reblurred)
             if score < best_score:
                 best_score = score
                 best = candidate
@@ -219,11 +221,11 @@ def extreme_channel_refine(
 
         smooth = cv2.bilateralFilter(x.astype(np.float32), d=0, sigmaColor=0.06, sigmaSpace=2.0)
         detail = x - smooth
-        gain = 0.06 + 0.12 * extreme_weight
+        gain = 0.04 + 0.08 * extreme_weight
         prior = np.clip(x + gain * detail, 0.0, 1.0)
-        prior *= 1.0 - 0.015 * dark_weight[..., None]
-        prior = 1.0 - (1.0 - prior) * (1.0 - 0.015 * bright_weight[..., None])
-        rho = 0.10 + 0.05 * index
+        prior *= 1.0 - 0.010 * dark_weight[..., None]
+        prior = 1.0 - (1.0 - prior) * (1.0 - 0.010 * bright_weight[..., None])
+        rho = 0.12 + 0.06 * index
         x = _data_consistency(y, prior, kernel, rho, workers=workers)
 
     return _artifact_safe_blend(y, initial_arr, x, kernel, workers=workers)

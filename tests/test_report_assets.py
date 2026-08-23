@@ -37,5 +37,7 @@ def test_benchmark_profiles_cover_every_source_with_valid_support() -> None:
         assert float(profile["lambda_tv"]) >= 0, name
         assert float(profile["lambda_l0"]) >= 0, name
 
-    # Regression guard for the long-motion case that exposed the old 25px fallback.
+    # Regression guards for support mismatches exposed by the full visual audit.
     assert int(profiles["7_patch_use.png"]["kernel_size"]) == 85
+    assert int(profiles["26.png"]["kernel_size"]) == 69
+    assert int(profiles["blurry_7.png"]["kernel_size"]) == 45

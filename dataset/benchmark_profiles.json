@@ -1,6 +1,6 @@
 {
   "26.blurred.jpg": {"kernel_size": 45, "gamma": 1.0, "lambda_dark": 0.004, "lambda_grad": 0.004, "lambda_tv": 0.001, "lambda_l0": 0.0005, "weight_ring": 1.0},
-  "26.png": {"kernel_size": 65, "gamma": 2.2, "lambda_dark": 0.004, "lambda_grad": 0.004, "lambda_tv": 0.001, "lambda_l0": 0.0005, "weight_ring": 1.0},
+  "26.png": {"kernel_size": 69, "gamma": 2.2, "lambda_dark": 0.004, "lambda_grad": 0.004, "lambda_tv": 0.001, "lambda_l0": 0.0005, "weight_ring": 1.0},
   "7_patch_use.png": {"kernel_size": 85, "gamma": 1.0, "lambda_dark": 0.004, "lambda_grad": 0.004, "lambda_tv": 0.01, "lambda_l0": 0.002, "weight_ring": 1.0},
   "IMG_0650_small_patch.png": {"kernel_size": 65, "gamma": 1.0, "lambda_dark": 0.004, "lambda_grad": 0.004, "lambda_tv": 0.001, "lambda_l0": 0.0005, "weight_ring": 1.0},
   "IMG_0664_small_patch.png": {"kernel_size": 65, "gamma": 1.0, "lambda_dark": 0.004, "lambda_grad": 0.004, "lambda_tv": 0.001, "lambda_l0": 0.0005, "weight_ring": 1.0},
@@ -9,7 +9,7 @@
   "IMG_4548_small.png": {"kernel_size": 35, "gamma": 1.0, "lambda_dark": 0.004, "lambda_grad": 0.004, "lambda_tv": 0.001, "lambda_l0": 0.0005, "weight_ring": 1.0},
   "IMG_4561.JPG": {"kernel_size": 65, "gamma": 1.0, "lambda_dark": 0.004, "lambda_grad": 0.004, "lambda_tv": 0.001, "lambda_l0": 0.0005, "weight_ring": 1.0},
   "blurry_2_small.png": {"kernel_size": 35, "gamma": 1.0, "lambda_dark": 0.004, "lambda_grad": 0.004, "lambda_tv": 0.001, "lambda_l0": 0.002, "weight_ring": 1.0},
-  "blurry_7.png": {"kernel_size": 65, "gamma": 1.0, "lambda_dark": 0.0, "lambda_grad": 0.004, "lambda_tv": 0.001, "lambda_l0": 0.002, "weight_ring": 1.0},
+  "blurry_7.png": {"kernel_size": 45, "gamma": 1.0, "lambda_dark": 0.0, "lambda_grad": 0.004, "lambda_tv": 0.001, "lambda_l0": 0.002, "weight_ring": 1.0},
   "boat.jpg": {"kernel_size": 35, "gamma": 2.2, "lambda_dark": 0.004, "lambda_grad": 0.004, "lambda_tv": 0.0005, "lambda_l0": 0.0005, "weight_ring": 1.0},
   "flower.jpg": {"kernel_size": 35, "gamma": 1.0, "lambda_dark": 0.004, "lambda_grad": 0.004, "lambda_tv": 0.001, "lambda_l0": 0.001, "weight_ring": 1.0},
   "flower_blurred.png": {"kernel_size": 55, "gamma": 2.2, "lambda_dark": 0.004, "lambda_grad": 0.004, "lambda_tv": 0.001, "lambda_l0": 0.002, "weight_ring": 1.0},
