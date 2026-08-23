@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import html
 import json
-import math
 import re
 import shutil
 import time
@@ -29,27 +28,21 @@ SUPPORTED = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 EXPECTED_IMAGES = 23
 CI_MAX_SIDE = 192
 
-# Explicit blurred/clean pairs shipped in the image folder.
-REFERENCE_PAIRS = {
-    "26.blurred": "26",
-    "flower_blurred": "flower",
-}
-
 METHODS = {
     "baseline": {
         "name": "Dark Channel Baseline",
         "short": "DCP",
-        "description": "Fast Python port of Pan et al. CVPR 2016: blind kernel estimation plus TV/L0 restoration.",
+        "description": "Fast Python port of Pan et al. CVPR 2016: blind PSF estimation plus TV/L0 restoration.",
     },
     "annealed_pnp": {
         "name": "Annealed Gaussian PnP",
         "short": "A-PnP",
-        "description": "Diffusion-inspired, weight-free refinement with Gaussian annealing, NLM denoising, and FFT data consistency.",
+        "description": "Diffusion-inspired, weight-free refinement with Gaussian annealing, NLM denoising, and FFT measurement consistency.",
     },
     "extreme_channel": {
         "name": "Extreme-Channel Guided",
         "short": "ECP-R",
-        "description": "Dark+bright local-extrema guided detail refinement with FFT data consistency.",
+        "description": "Dark+bright local-extrema guided detail refinement with FFT measurement consistency.",
     },
 }
 
@@ -80,35 +73,6 @@ def working_copy(image: np.ndarray, max_side: int = CI_MAX_SIDE) -> np.ndarray:
 def gray(image: np.ndarray) -> np.ndarray:
     arr = np.asarray(image, dtype=np.float32)
     return cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY) if arr.ndim == 3 else arr
-
-
-def psnr(candidate: np.ndarray, reference: np.ndarray) -> float:
-    mse = float(np.mean((np.asarray(candidate, np.float64) - np.asarray(reference, np.float64)) ** 2))
-    return 120.0 if mse <= 1e-12 else float(10.0 * math.log10(1.0 / mse))
-
-
-def ssim(candidate: np.ndarray, reference: np.ndarray) -> float:
-    a = np.asarray(candidate, np.float64)
-    b = np.asarray(reference, np.float64)
-    if a.shape != b.shape:
-        raise ValueError(f"SSIM shape mismatch: {a.shape} != {b.shape}")
-    if a.ndim == 2:
-        a, b = a[..., None], b[..., None]
-    c1, c2 = 0.01**2, 0.03**2
-    scores: list[float] = []
-    for channel in range(a.shape[2]):
-        x, y = a[..., channel], b[..., channel]
-        mx = cv2.GaussianBlur(x, (11, 11), 1.5)
-        my = cv2.GaussianBlur(y, (11, 11), 1.5)
-        vx = cv2.GaussianBlur(x * x, (11, 11), 1.5) - mx * mx
-        vy = cv2.GaussianBlur(y * y, (11, 11), 1.5) - my * my
-        vxy = cv2.GaussianBlur(x * y, (11, 11), 1.5) - mx * my
-        score = ((2 * mx * my + c1) * (2 * vxy + c2)) / (
-            (mx * mx + my * my + c1) * (vx + vy + c2) + 1e-12
-        )
-        core = score[5:-5, 5:-5] if min(score.shape) > 12 else score
-        scores.append(float(np.mean(core)))
-    return float(np.mean(scores))
 
 
 def sharpness(image: np.ndarray) -> float:
@@ -142,32 +106,32 @@ def diagnostics(
     kernel: np.ndarray,
     *,
     workers: int,
-    reference: np.ndarray | None = None,
-) -> dict[str, float | None]:
+) -> dict[str, float]:
     predicted = reblur_image(output, kernel, workers=workers)
     dark_fraction, bright_fraction = extreme_metrics(output)
-    row: dict[str, float | None] = {
+    return {
         "reblur_rmse": float(np.sqrt(np.mean((predicted - observed) ** 2))),
         "sharpness": sharpness(output),
         "noise_mad": noise_mad(output),
         "dark_fraction": dark_fraction,
         "bright_fraction": bright_fraction,
-        "psnr_db": None,
-        "ssim": None,
     }
-    if reference is not None:
-        row["psnr_db"] = psnr(output, reference)
-        row["ssim"] = ssim(output, reference)
-    return row
 
 
-def _mean(rows: list[dict[str, float | None]], key: str) -> float | None:
-    values = [float(row[key]) for row in rows if row.get(key) is not None]
-    return mean(values) if values else None
+def pct_change(value: float, baseline: float, *, lower_is_better: bool = False) -> float:
+    if abs(baseline) < 1e-12:
+        return 0.0
+    if lower_is_better:
+        return 100.0 * (baseline - value) / baseline
+    return 100.0 * (value - baseline) / baseline
 
 
-def _fmt(value: float | None, digits: int = 4) -> str:
-    return "—" if value is None else f"{value:.{digits}f}"
+def _fmt(value: float, digits: int = 4) -> str:
+    return f"{value:.{digits}f}"
+
+
+def _pct(value: float) -> str:
+    return f"{value:+.1f}%"
 
 
 def _card(title: str, image_path: str, subtitle: str, badge: str = "") -> str:
@@ -179,21 +143,26 @@ def _card(title: str, image_path: str, subtitle: str, badge: str = "") -> str:
     )
 
 
-def _method_table(rows: dict[str, dict[str, float | None]], runtimes: dict[str, float]) -> str:
-    body = []
+def _method_table(rows: dict[str, dict[str, float]], runtimes: dict[str, float]) -> str:
+    baseline = rows["baseline"]
+    body: list[str] = []
     for key in ("baseline", "annealed_pnp", "extreme_channel"):
         d = rows[key]
+        rmse_gain = pct_change(d["reblur_rmse"], baseline["reblur_rmse"], lower_is_better=True)
+        sharp_gain = pct_change(d["sharpness"], baseline["sharpness"])
+        noise_change = pct_change(d["noise_mad"], baseline["noise_mad"])
         body.append(
             "<tr>"
             f"<td><strong>{html.escape(METHODS[key]['name'])}</strong></td>"
             f"<td>{runtimes[key]:.3f}s</td>"
             f"<td>{_fmt(d['reblur_rmse'], 5)}</td>"
+            f"<td>{_pct(rmse_gain)}</td>"
             f"<td>{_fmt(d['sharpness'], 4)}</td>"
+            f"<td>{_pct(sharp_gain)}</td>"
             f"<td>{_fmt(d['noise_mad'], 5)}</td>"
+            f"<td>{_pct(noise_change)}</td>"
             f"<td>{_fmt(d['dark_fraction'], 3)}</td>"
             f"<td>{_fmt(d['bright_fraction'], 3)}</td>"
-            f"<td>{_fmt(d['psnr_db'], 2)}</td>"
-            f"<td>{_fmt(d['ssim'], 4)}</td>"
             "</tr>"
         )
     return "".join(body)
@@ -227,10 +196,9 @@ def generate_report(output_dir: Path = RESULTS) -> Path:
         fft_workers=-1,
     )
 
-    by_stem = {path.stem: path for path in images}
     original_shapes: dict[str, list[int]] = {}
     per_image: list[dict[str, object]] = []
-    metric_sets: dict[str, list[dict[str, float | None]]] = {key: [] for key in METHODS}
+    metric_sets: dict[str, list[dict[str, float]]] = {key: [] for key in METHODS}
     runtime_sets: dict[str, list[float]] = {key: [] for key in METHODS}
     total_started = time.perf_counter()
 
@@ -242,13 +210,6 @@ def generate_report(output_dir: Path = RESULTS) -> Path:
         case_dir = images_out / f"{index:02d}_{slugify(path.stem)}"
         case_dir.mkdir(parents=True, exist_ok=True)
         write_image(case_dir / "input.png", observed)
-
-        reference = None
-        reference_name = REFERENCE_PAIRS.get(path.stem)
-        if reference_name and reference_name in by_stem:
-            reference = read_image(by_stem[reference_name])
-            reference = cv2.resize(reference, (observed.shape[1], observed.shape[0]), interpolation=cv2.INTER_AREA)
-            write_image(case_dir / "ground_truth.png", reference)
 
         started = time.perf_counter()
         baseline, kernel, interim = deblur_image(observed, cfg)
@@ -295,15 +256,26 @@ def generate_report(output_dir: Path = RESULTS) -> Path:
         write_image(case_dir / "interim.png", interim)
         write_image(case_dir / "kernel.png", kernel / max(float(kernel.max()), 1e-12))
 
-        rows: dict[str, dict[str, float | None]] = {}
+        rows: dict[str, dict[str, float]] = {}
         for method, output in outputs.items():
             if output.shape != observed.shape or not np.isfinite(output).all():
                 raise RuntimeError(f"{method} produced invalid output for {path.name}")
-            row = diagnostics(output, observed, kernel, workers=cfg.fft_workers, reference=reference)
+            row = diagnostics(output, observed, kernel, workers=cfg.fft_workers)
             rows[method] = row
             metric_sets[method].append(row)
             runtime_sets[method].append(runtimes[method])
 
+        base_row = rows["baseline"]
+        gains = {
+            method: {
+                "reblur_rmse_improvement_pct": pct_change(
+                    row["reblur_rmse"], base_row["reblur_rmse"], lower_is_better=True
+                ),
+                "sharpness_change_pct": pct_change(row["sharpness"], base_row["sharpness"]),
+                "noise_mad_change_pct": pct_change(row["noise_mad"], base_row["noise_mad"]),
+            }
+            for method, row in rows.items()
+        }
         per_image.append(
             {
                 "index": index,
@@ -312,28 +284,45 @@ def generate_report(output_dir: Path = RESULTS) -> Path:
                 "original_shape": list(original.shape),
                 "working_shape": list(observed.shape),
                 "result_dir": str(case_dir.relative_to(output_dir)).replace("\\", "/"),
-                "ground_truth": reference_name,
                 "kernel_sum": float(kernel.sum()),
                 "kernel_peak": float(kernel.max()),
                 "runtimes_seconds": runtimes,
                 "metrics": rows,
+                "gains_vs_baseline": gains,
             }
         )
 
     total_runtime = time.perf_counter() - total_started
-    aggregate: dict[str, dict[str, float | None]] = {}
+    aggregate: dict[str, dict[str, float]] = {}
     for method in METHODS:
+        rows = metric_sets[method]
         aggregate[method] = {
-            "runtime_seconds_mean": mean(runtime_sets[method]),
-            "runtime_seconds_total": sum(runtime_sets[method]),
-            "reblur_rmse_mean": _mean(metric_sets[method], "reblur_rmse"),
-            "sharpness_mean": _mean(metric_sets[method], "sharpness"),
-            "noise_mad_mean": _mean(metric_sets[method], "noise_mad"),
-            "dark_fraction_mean": _mean(metric_sets[method], "dark_fraction"),
-            "bright_fraction_mean": _mean(metric_sets[method], "bright_fraction"),
-            "paired_psnr_db_mean": _mean(metric_sets[method], "psnr_db"),
-            "paired_ssim_mean": _mean(metric_sets[method], "ssim"),
+            "stage_runtime_seconds_mean": mean(runtime_sets[method]),
+            "stage_runtime_seconds_total": sum(runtime_sets[method]),
+            "reblur_rmse_mean": mean(row["reblur_rmse"] for row in rows),
+            "sharpness_mean": mean(row["sharpness"] for row in rows),
+            "noise_mad_mean": mean(row["noise_mad"] for row in rows),
+            "dark_fraction_mean": mean(row["dark_fraction"] for row in rows),
+            "bright_fraction_mean": mean(row["bright_fraction"] for row in rows),
         }
+
+    base_agg = aggregate["baseline"]
+    for method, row in aggregate.items():
+        row["reblur_rmse_improvement_vs_baseline_pct"] = pct_change(
+            row["reblur_rmse_mean"], base_agg["reblur_rmse_mean"], lower_is_better=True
+        )
+        row["sharpness_change_vs_baseline_pct"] = pct_change(
+            row["sharpness_mean"], base_agg["sharpness_mean"]
+        )
+        row["noise_mad_change_vs_baseline_pct"] = pct_change(
+            row["noise_mad_mean"], base_agg["noise_mad_mean"]
+        )
+        if method == "baseline":
+            row["end_to_end_runtime_seconds_total"] = row["stage_runtime_seconds_total"]
+        else:
+            row["end_to_end_runtime_seconds_total"] = (
+                base_agg["stage_runtime_seconds_total"] + row["stage_runtime_seconds_total"]
+            )
 
     report = {
         "benchmark": "Complete repository dataset/image three-method benchmark",
@@ -343,7 +332,11 @@ def generate_report(output_dir: Path = RESULTS) -> Path:
             "image_count": len(images),
             "working_max_side_pixels": CI_MAX_SIDE,
             "original_shapes": original_shapes,
-            "ground_truth_pairs": REFERENCE_PAIRS,
+            "ground_truth": None,
+            "ground_truth_note": (
+                "This image folder does not provide verified pixel-aligned clean targets for these 23 cases. "
+                "PSNR/SSIM are therefore intentionally not reported."
+            ),
         },
         "methods": METHODS,
         "fairness": "Each image uses one blind DCP kernel estimate; both new refinements reuse that same kernel.",
@@ -362,10 +355,9 @@ def generate_report(output_dir: Path = RESULTS) -> Path:
         "metric_notes": {
             "reblur_rmse": "Lower is better measurement consistency: reblur(restored, estimated_kernel) vs working input.",
             "sharpness": "Mean Sobel magnitude. Higher means more edge energy, but can also reward ringing/noise.",
-            "noise_mad": "Laplacian median absolute deviation. Diagnostic only; lower is not always perceptually better.",
+            "noise_mad": "Laplacian median absolute deviation. A diagnostic of high-frequency/noise content, not a quality score.",
             "dark_fraction": "Fraction of 9x9 local dark-channel values below 0.03.",
             "bright_fraction": "Fraction of 9x9 local bright-channel values above 0.97.",
-            "psnr_ssim": "Only reported for explicit blurred/clean pairs present in dataset/image.",
         },
     }
     (output_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -373,14 +365,15 @@ def generate_report(output_dir: Path = RESULTS) -> Path:
     agg_rows = "".join(
         "<tr>"
         f"<td><strong>{html.escape(METHODS[key]['name'])}</strong><small>{html.escape(METHODS[key]['description'])}</small></td>"
-        f"<td>{aggregate[key]['runtime_seconds_total']:.2f}s</td>"
+        f"<td>{aggregate[key]['end_to_end_runtime_seconds_total']:.2f}s</td>"
         f"<td>{_fmt(aggregate[key]['reblur_rmse_mean'], 5)}</td>"
+        f"<td>{_pct(aggregate[key]['reblur_rmse_improvement_vs_baseline_pct'])}</td>"
         f"<td>{_fmt(aggregate[key]['sharpness_mean'], 4)}</td>"
+        f"<td>{_pct(aggregate[key]['sharpness_change_vs_baseline_pct'])}</td>"
         f"<td>{_fmt(aggregate[key]['noise_mad_mean'], 5)}</td>"
+        f"<td>{_pct(aggregate[key]['noise_mad_change_vs_baseline_pct'])}</td>"
         f"<td>{_fmt(aggregate[key]['dark_fraction_mean'], 3)}</td>"
         f"<td>{_fmt(aggregate[key]['bright_fraction_mean'], 3)}</td>"
-        f"<td>{_fmt(aggregate[key]['paired_psnr_db_mean'], 2)}</td>"
-        f"<td>{_fmt(aggregate[key]['paired_ssim_mean'], 4)}</td>"
         "</tr>"
         for key in ("baseline", "annealed_pnp", "extreme_channel")
     )
@@ -392,23 +385,21 @@ def generate_report(output_dir: Path = RESULTS) -> Path:
         rel = str(case["result_dir"])
         rows = case["metrics"]  # type: ignore[assignment]
         runtimes = case["runtimes_seconds"]  # type: ignore[assignment]
-        gt = case["ground_truth"]
         cards = [
             _card("Observed input", f"{rel}/input.png", f"CI working copy of {name}", "Input"),
             _card(METHODS["baseline"]["name"], f"{rel}/baseline.png", "Blind DCP result and shared kernel", "Baseline"),
             _card(METHODS["annealed_pnp"]["name"], f"{rel}/annealed_pnp.png", "Gaussian annealing + PnP consistency", "New"),
             _card(METHODS["extreme_channel"]["name"], f"{rel}/extreme_channel.png", "Dark + bright extrema refinement", "New"),
+            _card("Estimated kernel", f"{rel}/kernel.png", "Shared PSF used by all three methods", "PSF"),
         ]
-        if gt:
-            cards.append(_card("Ground truth", f"{rel}/ground_truth.png", f"Paired clean image: {gt}", "GT"))
-        cards.append(_card("Estimated kernel", f"{rel}/kernel.png", "Shared PSF used by all three methods", "PSF"))
-        gt_note = f"paired clean reference: {html.escape(str(gt))}" if gt else ""
         cases_html.append(
             f'<details class="case" {"open" if idx <= 2 else ""}>'
-            f'<summary><span><b>{idx:02d}</b> {html.escape(name)}</span><span class="summary-note">{gt_note}</span></summary>'
+            f'<summary><span><b>{idx:02d}</b> {html.escape(name)}</span><span class="summary-note">'
+            f'{html.escape(str(case["original_shape"]))} → {html.escape(str(case["working_shape"]))}</span></summary>'
             f'<div class="cards">{"".join(cards)}</div>'
-            '<div class="table-wrap"><table><thead><tr><th>Method</th><th>Runtime</th><th>Reblur RMSE ↓</th>'
-            '<th>Sharpness ↑*</th><th>Noise MAD*</th><th>Dark frac.</th><th>Bright frac.</th><th>PSNR ↑</th><th>SSIM ↑</th></tr></thead>'
+            '<div class="table-wrap"><table><thead><tr><th>Method</th><th>Stage runtime</th><th>Reblur RMSE ↓</th>'
+            '<th>RMSE gain</th><th>Sharpness*</th><th>Sharp Δ</th><th>Noise MAD*</th><th>Noise Δ</th>'
+            '<th>Dark frac.</th><th>Bright frac.</th></tr></thead>'
             f'<tbody>{_method_table(rows, runtimes)}</tbody></table></div></details>'
         )
 
@@ -417,22 +408,23 @@ def generate_report(output_dir: Path = RESULTS) -> Path:
 <title>Dark Channel Deblur · Full Dataset Research Report</title>
 <style>
 :root{{--bg:#f4f7fb;--panel:#fff;--ink:#142033;--muted:#65748b;--line:#dfe6ef;--blue:#315efb;--shadow:0 12px 35px rgba(25,42,70,.08)}}
-*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}}main{{max-width:1440px;margin:auto;padding:38px 24px 64px}}
+*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}}main{{max-width:1460px;margin:auto;padding:38px 24px 64px}}
 .hero{{background:linear-gradient(135deg,#101a31 0%,#253d7a 58%,#49388d 100%);color:white;border-radius:26px;padding:34px 38px;box-shadow:var(--shadow)}}.eyebrow{{font-size:11px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:#bcd0ff}}h1{{font-size:34px;line-height:1.15;margin:7px 0 10px}}.hero>p{{max-width:980px;color:#dce6ff;margin:0}}.kpis{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:22px}}.kpi{{padding:13px 15px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:14px}}.kpi b{{display:block;font-size:22px}}.kpi span{{font-size:11px;color:#d1dcf8}}
-section{{margin-top:30px}}h2{{font-size:23px;margin:0 0 6px}}.lead{{color:var(--muted);margin:0 0 15px}}.notice{{background:#eef3ff;border-left:4px solid var(--blue);padding:14px 16px;border-radius:10px;margin:16px 0;color:#30466f}}.methods{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}}.method{{background:white;border:1px solid var(--line);border-radius:17px;padding:17px;box-shadow:var(--shadow)}}.method b{{font-size:16px}}.method p{{color:var(--muted);margin:5px 0 0}}
-.table-wrap{{overflow:auto;background:white;border:1px solid var(--line);border-radius:17px;box-shadow:var(--shadow);margin-top:14px}}table{{border-collapse:collapse;width:100%;min-width:940px}}th,td{{padding:11px 13px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top}}th:first-child,td:first-child{{text-align:left}}th{{background:#f8fafc;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.055em}}td small{{display:block;color:var(--muted);font-weight:400;max-width:430px;margin-top:3px}}tr:last-child td{{border-bottom:0}}
-.case{{margin-top:13px;background:white;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}}summary{{cursor:pointer;padding:15px 17px;font-size:15px;display:flex;justify-content:space-between;gap:12px;background:#fbfcfe}}summary b{{display:inline-grid;place-items:center;width:29px;height:29px;margin-right:9px;border-radius:9px;background:#eaf0ff;color:#294fd2}}.summary-note{{font-size:12px;color:var(--muted);font-weight:400}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;padding:14px}}.card{{border:1px solid var(--line);border-radius:14px;padding:10px;background:#fff}}.card-head{{display:flex;justify-content:space-between;gap:7px;align-items:flex-start;margin-bottom:8px}}.card h4{{font-size:13px;margin:0}}.card p{{font-size:10px;color:var(--muted);margin:2px 0 0}}.card img{{display:block;width:100%;height:auto;border-radius:9px;background:#eef2f7}}.badge{{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:3px 6px;border-radius:999px;background:#eaf0ff;color:#294fd2;white-space:nowrap}}
+section{{margin-top:30px}}h2{{font-size:23px;margin:0 0 6px}}.lead{{color:var(--muted);margin:0 0 15px}}.notice{{background:#eef3ff;border-left:4px solid var(--blue);padding:14px 16px;border-radius:10px;margin:16px 0;color:#30466f}}.warning{{background:#fff8e8;border-left-color:#e79b17;color:#665020}}.methods{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}}.method{{background:white;border:1px solid var(--line);border-radius:17px;padding:17px;box-shadow:var(--shadow)}}.method b{{font-size:16px}}.method p{{color:var(--muted);margin:5px 0 0}}
+.table-wrap{{overflow:auto;background:white;border:1px solid var(--line);border-radius:17px;box-shadow:var(--shadow);margin-top:14px}}table{{border-collapse:collapse;width:100%;min-width:1100px}}th,td{{padding:11px 13px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top}}th:first-child,td:first-child{{text-align:left}}th{{background:#f8fafc;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.055em}}td small{{display:block;color:var(--muted);font-weight:400;max-width:430px;margin-top:3px}}tr:last-child td{{border-bottom:0}}
+.case{{margin-top:13px;background:white;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}}summary{{cursor:pointer;padding:15px 17px;font-size:15px;display:flex;justify-content:space-between;gap:12px;background:#fbfcfe}}summary b{{display:inline-grid;place-items:center;width:29px;height:29px;margin-right:9px;border-radius:9px;background:#eaf0ff;color:#294fd2}}.summary-note{{font-size:12px;color:var(--muted);font-weight:400}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;padding:14px}}.card{{border:1px solid var(--line);border-radius:14px;padding:10px;background:#fff}}.card-head{{display:flex;justify-content:space-between;gap:7px;align-items:flex-start;margin-bottom:8px}}.card h4{{font-size:13px;margin:0}}.card p{{font-size:10px;color:var(--muted);margin:2px 0 0}}.card img{{display:block;width:100%;height:auto;border-radius:9px;background:#eef2f7}}.badge{{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:3px 6px;border-radius:999px;background:#eaf0ff;color:#294fd2;white-space:nowrap}}
 .foot{{font-size:12px;color:var(--muted);margin-top:24px}}code{{background:#eaf0f5;border-radius:5px;padding:2px 5px}}@media(max-width:800px){{main{{padding:18px 12px 38px}}.hero{{padding:25px 20px}}h1{{font-size:27px}}.kpis,.methods{{grid-template-columns:1fr 1fr}}}}@media(max-width:520px){{.kpis,.methods{{grid-template-columns:1fr}}}}
 </style></head><body><main>
-<header class="hero"><div class="eyebrow">Automated full-dataset Docker benchmark</div><h1>Dark-channel deblurring · three-method research comparison</h1><p>Every image committed under <code>dataset/image</code> is processed by the baseline and two new weight-free refinement variants. Both refinements reuse exactly the same estimated blur kernel, isolating the effect of the restoration prior.</p>
-<div class="kpis"><div class="kpi"><b>{len(images)}</b><span>dataset images</span></div><div class="kpi"><b>{len(images)*3}</b><span>restored outputs</span></div><div class="kpi"><b>{len(images)}</b><span>blind kernel estimates</span></div><div class="kpi"><b>{total_runtime:.1f}s</b><span>benchmark runtime</span></div></div></header>
-<section><h2>Methods</h2><p class="lead">The two additions are dependency-light research variants, not claims of reproducing a trained diffusion SOTA system.</p><div class="methods">
+<header class="hero"><div class="eyebrow">Automated full-dataset Docker benchmark</div><h1>Dark-channel deblurring · three-method research comparison</h1><p>Every image committed under <code>dataset/image</code> is processed by the baseline and two new weight-free refinement variants. Both refinements reuse the same estimated blur kernel, isolating the restoration-prior effect.</p>
+<div class="kpis"><div class="kpi"><b>{len(images)}</b><span>dataset images</span></div><div class="kpi"><b>{len(images)*3}</b><span>restored outputs</span></div><div class="kpi"><b>{len(images)}</b><span>blind PSF estimates</span></div><div class="kpi"><b>{total_runtime:.1f}s</b><span>benchmark runtime</span></div></div></header>
+<section><h2>Methods</h2><p class="lead">The additions are dependency-light research variants, not claims of reproducing a trained diffusion SOTA system.</p><div class="methods">
 <div class="method"><b>Dark Channel Baseline</b><p>{html.escape(METHODS['baseline']['description'])}</p></div>
 <div class="method"><b>Annealed Gaussian PnP</b><p>{html.escape(METHODS['annealed_pnp']['description'])}</p></div>
 <div class="method"><b>Extreme-Channel Guided</b><p>{html.escape(METHODS['extreme_channel']['description'])}</p></div></div>
-<div class="notice"><strong>How to read the metrics.</strong> Most images do not have paired clean ground truth. Reblur RMSE measures physical consistency with the observed blur model. Sharpness and noise MAD are diagnostics and should be interpreted together; stronger edges can also mean ringing. PSNR/SSIM are shown only for explicit blurred/clean pairs present in the folder. Each source is resized only in memory to at most {CI_MAX_SIDE}px for CI runtime.</div></section>
-<section><h2>Aggregate diagnostics</h2><p class="lead">Averages over all {len(images)} inputs; paired PSNR/SSIM average only the explicit reference pairs.</p><div class="table-wrap"><table><thead><tr><th>Method</th><th>Total runtime</th><th>Reblur RMSE ↓</th><th>Sharpness ↑*</th><th>Noise MAD*</th><th>Dark frac.</th><th>Bright frac.</th><th>Paired PSNR ↑</th><th>Paired SSIM ↑</th></tr></thead><tbody>{agg_rows}</tbody></table></div></section>
-<section><h2>Per-image visual comparison</h2><p class="lead">Open any image to compare input, three restorations, the shared kernel, and metrics.</p>{''.join(cases_html)}</section>
+<div class="notice"><strong>Fair comparison.</strong> One blind DCP kernel is estimated per image and shared by all three outputs. This makes differences in the two new rows attributable to their restoration prior rather than a different estimated PSF.</div>
+<div class="notice warning"><strong>No fabricated ground truth.</strong> Inspection of the release folder confirms that similarly named files are not verified pixel-aligned clean targets. Therefore this report intentionally does not calculate PSNR/SSIM. Reblur RMSE is the physical consistency metric; sharpness and noise MAD are diagnostics and must be read together.</div></section>
+<section><h2>Aggregate diagnostics</h2><p class="lead">Averages over all {len(images)} inputs. Positive RMSE gain means better consistency than the baseline. Sharpness gain can be useful detail or ringing; Noise Δ exposes that trade-off.</p><div class="table-wrap"><table><thead><tr><th>Method</th><th>End-to-end total</th><th>Reblur RMSE ↓</th><th>RMSE gain</th><th>Sharpness*</th><th>Sharp Δ</th><th>Noise MAD*</th><th>Noise Δ</th><th>Dark frac.</th><th>Bright frac.</th></tr></thead><tbody>{agg_rows}</tbody></table></div></section>
+<section><h2>Per-image visual comparison</h2><p class="lead">Open any case to compare input, baseline, both new variants, the shared kernel, and method-relative diagnostics.</p>{''.join(cases_html)}</section>
 <p class="foot">Generated by <code>docker compose run --rm test</code>. Baseline: Pan et al., CVPR 2016. Extreme-channel motivation: Yan et al., CVPR 2017. Annealed PnP is diffusion-inspired but uses no neural checkpoint. Machine-readable results: <code>report.json</code>.</p>
 </main></body></html>'''
     report_path = output_dir / "report.html"
