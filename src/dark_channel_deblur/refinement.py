@@ -29,7 +29,7 @@ def _crop(image: np.ndarray, py: int, px: int, shape: tuple[int, int]) -> np.nda
 
 
 def reblur_image(image: np.ndarray, kernel: np.ndarray, *, workers: int = -1) -> np.ndarray:
-    """Apply the estimated PSF with reflection padding for quality diagnostics."""
+    """Apply a PSF with reflection padding for measurement-consistency diagnostics."""
     arr = np.asarray(image, dtype=np.float32)
     padded, py, px = _pad_for_kernel(arr, kernel)
     otf = psf2otf(np.asarray(kernel, dtype=np.float32), padded.shape[:2], workers)
@@ -48,7 +48,7 @@ def _data_consistency(
     *,
     workers: int = -1,
 ) -> np.ndarray:
-    """Closed-form proximal step for ||Kx-y||^2 + rho ||x-z||^2."""
+    """Closed-form proximal step for blur fidelity plus a restoration prior."""
     if rho <= 0:
         raise ValueError("rho must be > 0")
     y = np.asarray(observed, dtype=np.float32)
@@ -74,7 +74,7 @@ def _data_consistency(
 
 
 def _nlm_gaussian_denoiser(image: np.ndarray, sigma: float) -> np.ndarray:
-    """Fast weight-free Gaussian denoiser used as a PnP prior."""
+    """CPU-friendly denoiser used as a plug-and-play image prior."""
     arr = np.asarray(image, dtype=np.float32)
     u8 = np.rint(np.clip(arr, 0.0, 1.0) * 255.0).astype(np.uint8)
     h = max(2.0, min(12.0, float(sigma) * 255.0 * 0.55))
@@ -96,6 +96,53 @@ def _noise_mad(image: np.ndarray) -> float:
     return float(np.median(np.abs(lap - median)))
 
 
+def _rmse(a: np.ndarray, b: np.ndarray) -> float:
+    return float(np.sqrt(np.mean((np.asarray(a, np.float32) - np.asarray(b, np.float32)) ** 2)))
+
+
+def _artifact_safe_blend(
+    observed: np.ndarray,
+    initial: np.ndarray,
+    candidate: np.ndarray,
+    kernel: np.ndarray,
+    *,
+    workers: int,
+) -> np.ndarray:
+    """Keep a refinement only to the extent that fidelity improves without noise explosion.
+
+    Blind deconvolution is prone to a failure mode where a candidate achieves a lower
+    reblur residual by creating ringing, duplicated edges, or high-frequency noise.
+    This guard measures both effects and smoothly backs the candidate toward the
+    stable initial restoration instead of accepting the artifact-heavy result.
+    """
+    y = np.asarray(observed, dtype=np.float32)
+    base = np.clip(np.asarray(initial, dtype=np.float32), 0.0, 1.0)
+    cand = np.clip(np.asarray(candidate, dtype=np.float32), 0.0, 1.0)
+
+    base_rmse = _rmse(reblur_image(base, kernel, workers=workers), y)
+    cand_rmse = _rmse(reblur_image(cand, kernel, workers=workers), y)
+    if not np.isfinite(cand_rmse) or cand_rmse >= base_rmse * 0.999:
+        return base.copy()
+
+    relative_gain = (base_rmse - cand_rmse) / max(base_rmse, 1e-8)
+    base_noise = max(_noise_mad(base), 0.0025)
+    candidate_noise = _noise_mad(cand)
+    noise_ratio = candidate_noise / base_noise
+
+    # A 20% fidelity gain may use the whole candidate if the high-frequency
+    # diagnostic remains controlled. Small gains and large noise ratios are blended
+    # conservatively. Squaring the noise attenuation strongly suppresses ringing.
+    fidelity_alpha = float(np.clip(relative_gain / 0.20, 0.10, 1.0))
+    noise_alpha = 1.0 if noise_ratio <= 1.8 else float((1.8 / noise_ratio) ** 2)
+    alpha = float(np.clip(fidelity_alpha * noise_alpha, 0.0, 1.0))
+
+    blended = np.clip(base + alpha * (cand - base), 0.0, 1.0).astype(np.float32)
+    blended_rmse = _rmse(reblur_image(blended, kernel, workers=workers), y)
+    if blended_rmse > base_rmse:
+        return base.copy()
+    return blended
+
+
 def annealed_pnp_refine(
     observed: np.ndarray,
     initial: np.ndarray,
@@ -108,39 +155,37 @@ def annealed_pnp_refine(
     seed: int = 0,
     workers: int = -1,
 ) -> np.ndarray:
-    """Diffusion-inspired annealed plug-and-play refinement.
-
-    This is intentionally not a learned diffusion model. It borrows the useful
-    restoration structure of diffusion/PnP methods: an annealed Gaussian-noise
-    schedule, a denoising prior, and an explicit measurement-consistency step.
-    OpenCV NLM keeps the method weight-free and CPU/Docker friendly.
-    """
+    """Annealed stochastic plug-and-play refinement with artifact protection."""
     if steps < 1 or candidates < 1:
         raise ValueError("steps and candidates must be >= 1")
     if sigma_start <= 0 or sigma_end <= 0:
         raise ValueError("sigma values must be > 0")
 
     y = np.asarray(observed, dtype=np.float32)
-    x = np.clip(np.asarray(initial, dtype=np.float32), 0.0, 1.0).copy()
+    initial_arr = np.clip(np.asarray(initial, dtype=np.float32), 0.0, 1.0)
+    x = initial_arr.copy()
     rng = np.random.default_rng(seed)
     sigmas = np.geomspace(float(sigma_start), float(sigma_end), int(steps))
 
     for index, sigma in enumerate(sigmas):
-        rho = 0.04 + 0.08 * index / max(steps - 1, 1)
+        rho = 0.05 + 0.10 * index / max(steps - 1, 1)
         best_score = math.inf
         best = x
+        noise_floor = max(_noise_mad(x), 0.0025)
         for _ in range(candidates):
             noise = rng.normal(0.0, sigma, x.shape).astype(np.float32)
             noisy = np.clip(x + noise, 0.0, 1.0)
             prior = _nlm_gaussian_denoiser(noisy, float(sigma))
             candidate = _data_consistency(y, prior, kernel, rho, workers=workers)
-            residual = float(np.sqrt(np.mean((reblur_image(candidate, kernel, workers=workers) - y) ** 2)))
-            score = residual + 0.025 * _noise_mad(candidate)
+            residual = _rmse(reblur_image(candidate, kernel, workers=workers), y)
+            noise_ratio = _noise_mad(candidate) / noise_floor
+            score = residual + 0.002 * max(0.0, noise_ratio - 1.8) ** 2
             if score < best_score:
                 best_score = score
                 best = candidate
         x = best
-    return np.clip(x, 0.0, 1.0).astype(np.float32)
+
+    return _artifact_safe_blend(y, initial_arr, x, kernel, workers=workers)
 
 
 def extreme_channel_refine(
@@ -152,19 +197,15 @@ def extreme_channel_refine(
     patch_size: int = 15,
     workers: int = -1,
 ) -> np.ndarray:
-    """Extreme-channel guided refinement using both dark and bright evidence.
-
-    Yan et al.'s Extreme Channels Prior motivates adding bright-channel evidence
-    where dark-channel-only restoration can be weak. This is a lightweight new
-    refinement, not a reproduction of their full optimizer.
-    """
+    """Dual-extreme local-contrast refinement with artifact protection."""
     if steps < 1:
         raise ValueError("steps must be >= 1")
     if patch_size < 3 or patch_size % 2 == 0:
         raise ValueError("patch_size must be an odd integer >= 3")
 
     y = np.asarray(observed, dtype=np.float32)
-    x = np.clip(np.asarray(initial, dtype=np.float32), 0.0, 1.0).copy()
+    initial_arr = np.clip(np.asarray(initial, dtype=np.float32), 0.0, 1.0)
+    x = initial_arr.copy()
     if x.ndim != 3 or x.shape[2] != 3:
         return x
 
@@ -178,11 +219,11 @@ def extreme_channel_refine(
 
         smooth = cv2.bilateralFilter(x.astype(np.float32), d=0, sigmaColor=0.06, sigmaSpace=2.0)
         detail = x - smooth
-        gain = 0.12 + 0.20 * extreme_weight
+        gain = 0.06 + 0.12 * extreme_weight
         prior = np.clip(x + gain * detail, 0.0, 1.0)
-        prior *= 1.0 - 0.025 * dark_weight[..., None]
-        prior = 1.0 - (1.0 - prior) * (1.0 - 0.025 * bright_weight[..., None])
-        rho = 0.08 + 0.04 * index
+        prior *= 1.0 - 0.015 * dark_weight[..., None]
+        prior = 1.0 - (1.0 - prior) * (1.0 - 0.015 * bright_weight[..., None])
+        rho = 0.10 + 0.05 * index
         x = _data_consistency(y, prior, kernel, rho, workers=workers)
 
-    return np.clip(x, 0.0, 1.0).astype(np.float32)
+    return _artifact_safe_blend(y, initial_arr, x, kernel, workers=workers)

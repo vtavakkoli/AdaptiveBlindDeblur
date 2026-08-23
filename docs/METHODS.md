@@ -1,130 +1,132 @@
 # Methods
 
-This repository compares one classical blind-deblurring baseline with two weight-free research refinements.
+This repository contains three current, weight-free restoration paths built around one explicit blur model. The implementation is maintained as an independent experimental framework rather than as a reproduction of a specific published method.
 
-The goal is to keep the physical blur model explicit and make each added prior independently testable.
+## 1. Adaptive Blind Baseline (`baseline`)
 
-## 1. Dark Channel Baseline (`baseline`)
+The baseline estimates an unknown point-spread function (PSF) and latent image jointly using a coarse-to-fine alternating optimization.
 
-The baseline follows the optimization structure of Pan et al., *Blind Image Deblurring Using Dark Channel Prior*, CVPR 2016.
+At each scale it combines:
 
-For a blurred observation `y`, latent sharp image `x`, and blur kernel `k`, the blind problem can be viewed as alternating between:
+1. sparse local-minimum/extrema regularization of the latent image;
+2. sparse image-gradient regularization;
+3. salient-gradient selection for PSF estimation;
+4. FFT-domain PSF estimation;
+5. PSF non-negativity, pruning, normalization, and centering;
+6. propagation of the PSF to the next finer image scale.
 
-1. latent-image estimation under dark-channel and gradient sparsity priors;
-2. blur-kernel estimation from salient gradients;
-3. kernel pruning, normalization, and centering;
-4. coarse-to-fine propagation across image scales;
-5. final non-blind TV/L0 restoration using the estimated PSF.
+After blind estimation, the full-resolution RGB image is restored with TV/L0 regularization and ringing suppression.
 
-The Python implementation modernizes several low-level operations for speed:
+The benchmark does **not** use one generic PSF support for every image. `dataset/benchmark_profiles.json` records an explicit support and restoration profile for each of the 23 supplied sources.
 
-- OpenCV morphology for local minima;
-- Numba for remaining local mappings;
-- SciPy FFTs for convolution/deconvolution;
-- NumPy vectorization for gradients and thresholding;
-- float32 iterative buffers.
+### Why image-specific PSF support matters
 
-The objective and update sequence are intended to reproduce the research method structurally, not bit-for-bit MATLAB numerics.
+Blind deblurring is strongly dependent on the maximum motion support that the optimizer is allowed to represent. A 25×25 support cannot represent a long 85- or 115-pixel motion trajectory. If the support is too small, the latent image can retain duplicate edges even when the optimization converges numerically.
 
-## 2. Annealed Gaussian PnP (`annealed-pnp`)
+The quality benchmark therefore treats PSF support as part of the experiment configuration rather than as a CI shortcut.
 
-This is a **diffusion-inspired plug-and-play refinement**, not a trained diffusion model.
+## 2. Annealed PnP Refinement (`annealed-pnp`)
 
-It starts from the baseline result `x0` and the same estimated PSF `k`. At each refinement step:
+This refinement begins from the adaptive baseline and its independently estimated PSF.
 
-1. sample Gaussian perturbation using a geometrically decreasing noise level;
-2. denoise the perturbed estimate with classical non-local means;
-3. enforce measurement consistency with the observed blur;
-4. retain the deterministic candidate selected by the configured seed/protocol.
+Each step performs:
 
-The measurement-consistency step solves a quadratic proximal problem of the form:
+1. Gaussian perturbation at a decreasing noise scale;
+2. non-local-means denoising to produce a prior candidate;
+3. a closed-form FFT data-consistency update;
+4. candidate scoring using blur-model consistency and high-frequency growth;
+5. a final artifact-safety blend relative to the baseline.
+
+The data-consistency step has the form:
 
 ```text
 argmin_x ||Kx - y||² + ρ ||x - z||²
 ```
 
-where:
+where `K` is convolution with the estimated PSF, `y` is the observed image, and `z` is the current prior estimate.
 
-- `K` is convolution with the estimated PSF;
-- `y` is the observed blurred image;
-- `z` is the current denoised prior estimate;
-- `ρ` controls the balance between the prior and observed measurement.
+The method is stochastic but reproducible under its seed. It has no learned checkpoint, external neural model, or GPU requirement.
 
-Because convolution is diagonal in the Fourier domain, the update is solved efficiently with FFTs.
+### Artifact-safety guard
 
-### Why call it diffusion-inspired?
+A lower reblur error does not automatically mean a better restoration. Blind inverse problems can reduce the residual while creating ringing, duplicated contours, or amplified texture/noise.
 
-The method borrows the useful inverse-problem pattern used by diffusion/PnP restoration systems:
+The refinement therefore measures:
 
-- progressively changing noise scale;
-- a denoising/image prior;
-- repeated data-consistency projection.
+- improvement in reblur RMSE;
+- Laplacian-MAD growth relative to the baseline.
 
-However, the current denoiser is NLM rather than a learned score or diffusion network. The repository therefore does **not** describe this method as a diffusion model or as SOTA.
+When the candidate adds too much high-frequency energy for the achieved fidelity gain, it is blended back toward the baseline. If it does not improve measurement consistency, the baseline is retained.
 
-## 3. Extreme-Channel Guided (`extreme-channel`)
+## 3. Dual-Extreme Refinement (`extreme-channel`)
 
-Dark-channel assumptions can be weak in bright or saturated image regions. Extreme-channel methods address this general limitation by considering both local dark and local bright evidence.
+This method uses both local dark and local bright extrema to form a spatial confidence map for detail recovery.
 
-This repository's lightweight refinement:
+For each iteration it:
 
 1. computes local dark extrema;
 2. computes local bright extrema;
-3. derives an extreme-confidence map;
-4. uses that map to gate detail enhancement;
-5. applies explicit FFT measurement consistency after every refinement step.
+3. forms a dual-extreme confidence map;
+4. applies conservative local-detail enhancement;
+5. projects the result back through the blur-model data-consistency step;
+6. applies the same final artifact-safety guard used by the annealed refinement.
 
-This is an experimental repository-specific refinement motivated by Extreme Channels Prior research; it is not claimed to reproduce the full optimizer of a specific published ECP method.
+The refinement is intentionally lightweight and deterministic for a fixed input/configuration.
 
-## Shared-PSF comparison design
+## Shared PSF design
 
-For every source image, only the baseline estimates a blind PSF.
+The comparison uses one independently estimated PSF per source:
 
 ```text
-source
-  │
-  ├── blind DCP baseline ──> estimated PSF k
-  │                         │
-  │                         ├── Annealed Gaussian PnP
-  │                         └── Extreme-Channel Guided
-  │
-  └── same observed image used by all methods
+observed source
+      │
+      └── Adaptive Blind Baseline ──> estimated PSF
+                      │
+                      ├── Annealed PnP Refinement
+                      └── Dual-Extreme Refinement
 ```
 
-Both refinements use exactly the same `k`.
+Both refinements use the baseline PSF. This means differences between the three displayed restorations come from the restoration stage rather than from three unrelated kernel estimates.
 
-This design is intentional: if each method estimated an independent PSF, differences in the final image would mix together kernel-estimation differences and restoration-prior differences.
+## Benchmark profiles
 
-## Historical MATLAB kernels
+`dataset/benchmark_profiles.json` contains the quality configuration for every benchmark image:
 
-When `dataset/results/<stem>_kernel.png` exists and is a valid odd square kernel, its **dimensions** may be used as the benchmark kernel size for the Python baseline.
+- `kernel_size`
+- `gamma`
+- `lambda_dark`
+- `lambda_grad`
+- `lambda_tv`
+- `lambda_l0`
+- `weight_ring`
 
-The historical kernel values are never injected into the Python methods.
+The Docker benchmark requires the profile file to contain exactly one entry for every source image.
 
-This improves comparability with the historical release while preserving the blind-estimation nature of the Python benchmark.
+Legacy output images and legacy kernel **pixel values** are not used to create the current restorations. They are loaded only after inference for evaluation and visualization.
 
-## Benchmark profile versus CLI defaults
+## Full-quality versus preview mode
 
-The full Docker benchmark uses a recorded, bounded iterative profile so all 23 native-resolution images can run reproducibly in CI. The exact parameters are written to `results/report.json`.
+The quality benchmark uses:
 
-The CLI remains independently configurable for deeper single-image experiments.
+- five latent/PSF alternations per scale;
+- uncapped gradient optimization;
+- uncapped local-extrema optimization;
+- native image resolution.
 
-## Recommended future research extensions
+The CLI flag `--fast` caps iterative loops only for previews. It must not be used to produce the repository's quality report.
 
-The current architecture intentionally separates prior refinement from data consistency. Natural next steps include:
+## Design principles
 
-- replacing NLM with a pretrained diffusion/score denoiser;
-- adaptive noise schedules based on estimated blur/noise level;
-- ringing-aware candidate selection;
-- saturation-aware PSF estimation rather than only post-restoration refinement;
-- multi-scale learned priors while preserving explicit blur consistency;
-- evaluation on paired GoPro, HIDE, RealBlur, Köhler, and Levin-style benchmarks under their standard protocols.
+The current implementation prioritizes:
 
-Any SOTA claim should be made only after such methods are evaluated on established paired benchmarks with accepted distortion and perceptual metrics.
+- native-resolution evaluation;
+- explicit degradation-model consistency;
+- reproducible CPU execution;
+- independently estimated PSFs;
+- transparent per-image configuration;
+- protection against residual-only artifact optimization;
+- machine-readable experiment records.
 
-## Primary references
+## Future work
 
-- J. Pan, D. Sun, H. Pfister, M.-H. Yang, **Blind Image Deblurring Using Dark Channel Prior**, CVPR 2016.
-- Y. Yan et al., **Image Deblurring via Extreme Channels Prior**, CVPR 2017.
-
-See `CITATION.cff` and the root README for citation guidance.
+Useful extensions include learned denoisers, adaptive PSF-support proposal, spatially varying blur models, saturation-aware kernel estimation, perceptual no-reference metrics, and evaluation on separately licensed paired datasets with known clean targets.

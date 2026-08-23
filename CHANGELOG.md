@@ -2,40 +2,44 @@
 
 All notable repository-level changes are documented here.
 
-## 0.3.0 — Native-resolution benchmark
+## 0.4.0 — Full-quality adaptive benchmark
+
+### Fixed
+
+- Removed the generic small-PSF benchmark shortcut that could leave long motion blur unresolved.
+- Added explicit per-image benchmark profiles, including large PSF supports for difficult motion cases.
+- Removed optimization-loop caps from the quality benchmark; `--fast` remains preview-only.
+- Added artifact-safety guards so refinements cannot be accepted solely by lowering reblur residual while strongly amplifying high-frequency noise/ringing.
+- Updated Docker/CI validation to require estimated PSF dimensions to match the recorded benchmark profile.
 
 ### Changed
 
-- Full `dataset/image` Docker benchmark now processes all 23 sources at native decoded resolution.
-- Benchmark no longer resizes inputs or references for CI.
-- Output dimensions are validated against source dimensions for every method.
-- Docker mounts `dataset/` read-only instead of baking dataset copies into the image.
-- Historical `dataset/results/<stem>_result.png` outputs are compared only when dimensions match exactly.
-- Historical kernel dimensions can select the Python benchmark kernel size without using historical kernel values as an oracle.
-- Report schema upgraded with source SHA-256, environment versions, Git commit, kernel-size provenance, exact shape metadata, and historical-reference status.
-- CI now includes Ruff linting, native-resolution contract verification, workflow summary publishing, and a longer benchmark timeout.
+- Repositioned the project as an independent experimental deblurring framework rather than a port/reproduction of an older paper.
+- Renamed report-facing methods to Adaptive Blind Baseline, Annealed PnP Refinement, and Dual-Extreme Refinement.
+- Renamed previous saved outputs/kernels as legacy evaluation assets.
+- Legacy result pixels and legacy kernel values are explicitly evaluation-only and never inference inputs.
+- Package version bumped to 0.4.0.
 
 ### Added
 
-- Native-resolution HTML benchmark report with historical MATLAB cards and kernel comparison where available.
-- `results/SUMMARY.md` CI/experiment summary.
-- `docs/METHODS.md`.
-- `docs/BENCHMARKING.md`.
-- `CONTRIBUTING.md`.
-- `CITATION.cff`.
-- `NOTICE.md`.
-- Pull-request template for benchmark/reproducibility review.
+- `dataset/benchmark_profiles.json` with one quality profile for every source image.
+- Regression tests for profile coverage, long-motion PSF support, and bounded refinement artifact growth.
 
-## 0.2.0 — Research refinements and full image-folder coverage
+## 0.3.0 — Native-resolution benchmark
 
-- Added Annealed Gaussian PnP refinement.
-- Added Extreme-Channel Guided refinement.
+- Full Docker benchmark processes all 23 sources at native decoded resolution.
+- Output dimensions are validated for every method.
+- Docker mounts `dataset/` read-only.
+- Added exact-shape legacy comparison, machine-readable experiment metadata, Ruff linting, `SUMMARY.md`, methods/benchmark docs, contribution guidance, citation metadata, notice, and PR template.
+
+## 0.2.0 — Refinements and full image-folder coverage
+
+- Added annealed stochastic plug-and-play refinement.
+- Added dual-extreme local-detail refinement.
 - Extended Docker report from one image to all 23 files in `dataset/image`.
 - Added per-image and aggregate diagnostics.
 - Added Python 3.13-only CI and refinement regression tests.
 
-## 0.1.0 — Initial Python port
+## 0.1.0 — Initial implementation
 
-- Ported the CVPR 2016 dark-channel blind-deblurring research code from MATLAB to Python.
-- Added OpenCV, NumPy, SciPy FFT, and Numba optimizations.
-- Added CLI, package API, Docker support, unit tests, and MATLAB regression assets.
+- Added multi-scale blind PSF estimation, TV/L0 restoration, CLI, package API, Docker support, unit tests, and regression assets.

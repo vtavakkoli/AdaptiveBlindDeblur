@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dark-channel-deblur"
-version = "0.3.0"
-description = "Native-resolution blind image deblurring with dark-channel, annealed PnP, and extreme-channel research methods."
+version = "0.4.0"
+description = "Experimental native-resolution blind deblurring with adaptive PSF estimation and artifact-guarded refinements."
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [
@@ -13,7 +13,7 @@ authors = [
 ]
 keywords = [
   "blind-deblurring",
-  "dark-channel-prior",
+  "psf-estimation",
   "image-restoration",
   "plug-and-play",
   "computer-vision",

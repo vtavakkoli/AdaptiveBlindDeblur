@@ -1,4 +1,4 @@
-"""Native-resolution blind image deblurring research package."""
+"""Adaptive native-resolution blind image deblurring research package."""
 
 from .config import DeblurConfig
 from .deblur import deblur_image, estimate_blur_kernel
@@ -12,4 +12,4 @@ __all__ = [
     "extreme_channel_refine",
     "reblur_image",
 ]
-__version__ = "0.3.0"
+__version__ = "0.4.0"

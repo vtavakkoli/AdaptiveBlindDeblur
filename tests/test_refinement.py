@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import cv2
 import numpy as np
 
 from dark_channel_deblur import annealed_pnp_refine, extreme_channel_refine, reblur_image
@@ -9,7 +10,11 @@ def _sample() -> tuple[np.ndarray, np.ndarray]:
     y, x = np.mgrid[0:48, 0:48]
     base = 0.15 + 0.55 * (x / 47.0) + 0.15 * (y / 47.0)
     image = np.stack(
-        [base, np.clip(base * 0.85 + 0.05, 0, 1), np.clip(base * 0.70 + 0.10, 0, 1)],
+        [
+            base,
+            np.clip(base * 0.85 + 0.05, 0, 1),
+            np.clip(base * 0.70 + 0.10, 0, 1),
+        ],
         axis=2,
     ).astype(np.float32)
     image[10:27, 12:34] *= 0.25
@@ -17,6 +22,19 @@ def _sample() -> tuple[np.ndarray, np.ndarray]:
     kernel = np.zeros((5, 5), dtype=np.float32)
     kernel[2, 1:4] = np.array([0.25, 0.50, 0.25], dtype=np.float32)
     return image, kernel
+
+
+def _noise_mad(image: np.ndarray) -> float:
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    lap = cv2.Laplacian(gray, cv2.CV_32F)
+    median = float(np.median(lap))
+    return float(np.median(np.abs(lap - median)))
+
+
+def _residual(image: np.ndarray, observed: np.ndarray, kernel: np.ndarray) -> float:
+    return float(
+        np.sqrt(np.mean((reblur_image(image, kernel, workers=1) - observed) ** 2))
+    )
 
 
 def test_reblur_identity_kernel_is_identity() -> None:
@@ -53,8 +71,7 @@ def test_annealed_pnp_is_deterministic_finite_and_bounded() -> None:
     assert np.isfinite(first).all()
     assert 0.0 <= float(first.min()) <= float(first.max()) <= 1.0
     assert np.allclose(first, second, atol=1e-7)
-    residual = float(np.sqrt(np.mean((reblur_image(first, kernel, workers=1) - blurred) ** 2)))
-    assert residual < 0.08
+    assert _residual(first, blurred, kernel) < 0.08
 
 
 def test_extreme_channel_refinement_is_finite_and_data_consistent() -> None:
@@ -71,5 +88,40 @@ def test_extreme_channel_refinement_is_finite_and_data_consistent() -> None:
     assert refined.shape == image.shape
     assert np.isfinite(refined).all()
     assert 0.0 <= float(refined.min()) <= float(refined.max()) <= 1.0
-    residual = float(np.sqrt(np.mean((reblur_image(refined, kernel, workers=1) - blurred) ** 2)))
-    assert residual < 0.08
+    assert _residual(refined, blurred, kernel) < 0.08
+
+
+def test_refinements_do_not_trade_tiny_fidelity_gain_for_unbounded_noise() -> None:
+    image, kernel = _sample()
+    observed = reblur_image(image, kernel, workers=1)
+
+    # Use the observed image itself as a deliberately conservative initial point.
+    # Refinements may improve consistency, but their final safety guard must keep
+    # high-frequency amplification bounded relative to that starting point.
+    initial = observed.copy()
+    base_noise = max(_noise_mad(initial), 0.0025)
+    base_residual = _residual(initial, observed, kernel)
+
+    outputs = [
+        annealed_pnp_refine(
+            observed,
+            initial,
+            kernel,
+            steps=3,
+            candidates=1,
+            seed=11,
+            workers=1,
+        ),
+        extreme_channel_refine(
+            observed,
+            initial,
+            kernel,
+            steps=3,
+            patch_size=9,
+            workers=1,
+        ),
+    ]
+
+    for output in outputs:
+        assert _residual(output, observed, kernel) <= base_residual + 1e-6
+        assert _noise_mad(output) <= base_noise * 4.0

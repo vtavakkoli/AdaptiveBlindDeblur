@@ -4,10 +4,10 @@ import cv2
 import numpy as np
 from scipy import fft
 
+from .boundary import wrap_boundary
 from .config import DeblurConfig
 from .dark_channel import project_dark_channel
 from .fft_utils import fast_shape, psf2otf
-from .boundary import wrap_boundary
 
 
 def _periodic_gradients(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -40,7 +40,7 @@ def l0_deblur_dark_channel(
     lambda_grad: float,
     config: DeblurConfig,
 ) -> np.ndarray:
-    """Solve the latent-image subproblem with dark-channel + L0 gradients."""
+    """Solve the latent-image subproblem with sparse local minima and L0 gradients."""
     image = np.asarray(blurred, dtype=np.float32)
     s = image.copy()
     shape = s.shape[:2]
@@ -90,7 +90,11 @@ def l0_deblur_dark_channel(
                 + beta * fft.fft2(div, axes=(0, 1), workers=workers)
                 + beta_pixel * fft.fft2(u, axes=(0, 1), workers=workers)
             )
-            s = fft.ifft2(numerator / denominator, axes=(0, 1), workers=workers).real.astype(np.float32)
+            s = fft.ifft2(
+                numerator / denominator,
+                axes=(0, 1),
+                workers=workers,
+            ).real.astype(np.float32)
             beta *= config.kappa
             grad_steps += 1
             if lambda_grad == 0:
@@ -109,7 +113,7 @@ def l0_restoration(
     *,
     pad: bool = True,
 ) -> np.ndarray:
-    """L0 gradient restoration from Xu et al./Pan et al."""
+    """Restore an image using FFT data fidelity and L0 gradient regularization."""
     image = np.asarray(blurred, dtype=np.float32)
     original_shape = image.shape[:2]
     if pad:
@@ -145,7 +149,11 @@ def l0_restoration(
             gy[mask] = 0.0
         div = _divergence(gx, gy)
         numerator = norm1 + beta * fft.fft2(div, axes=(0, 1), workers=workers)
-        s = fft.ifft2(numerator / (den_kernel + beta * den_grad), axes=(0, 1), workers=workers).real.astype(np.float32)
+        s = fft.ifft2(
+            numerator / (den_kernel + beta * den_grad),
+            axes=(0, 1),
+            workers=workers,
+        ).real.astype(np.float32)
         beta *= config.kappa
         steps += 1
 
@@ -158,7 +166,7 @@ def tv_deconvolution_aniso(
     lambda_tv: float,
     config: DeblurConfig,
 ) -> np.ndarray:
-    """Fast anisotropic TV-L2 deconvolution (ADM/Split-Bregman style)."""
+    """Fast anisotropic TV-L2 deconvolution using variable splitting."""
     image = np.asarray(blurred, dtype=np.float32)
     shape = image.shape[:2]
     workers = config.fft_workers
@@ -183,7 +191,8 @@ def tv_deconvolution_aniso(
         wy = np.sign(gy) * np.maximum(np.abs(gy) - beta * lambda_tv, 0.0)
         div = _divergence(wx, wy)
         result = fft.ifft2(
-            (norm1 + gamma * fft.fft2(div, axes=(0, 1), workers=workers)) / (den1 + gamma * den2),
+            (norm1 + gamma * fft.fft2(div, axes=(0, 1), workers=workers))
+            / (den1 + gamma * den2),
             axes=(0, 1),
             workers=workers,
         ).real.astype(np.float32)
@@ -198,7 +207,7 @@ def ringing_artifacts_removal(
     kernel: np.ndarray,
     config: DeblurConfig,
 ) -> np.ndarray:
-    """TV + L0 final restoration with bilateral ringing suppression."""
+    """Combine TV and L0 restorations with bilateral ringing suppression."""
     original_shape = image.shape[:2]
     target = fast_shape(original_shape, kernel.shape)
     padded = wrap_boundary(np.asarray(image, dtype=np.float32), target)

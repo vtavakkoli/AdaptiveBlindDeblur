@@ -13,24 +13,36 @@ from .refinement import annealed_pnp_refine, extreme_channel_refine
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Blind image deblurring with dark/extreme-channel priors")
+    parser = argparse.ArgumentParser(
+        description="Experimental blind image deblurring with guarded restoration refinements"
+    )
     parser.add_argument("input", type=Path, help="Blurred input image")
     parser.add_argument("output", type=Path, help="Deblurred output image")
-    parser.add_argument("--kernel-output", type=Path, default=None, help="Optional estimated kernel PNG")
+    parser.add_argument("--kernel-output", type=Path, default=None, help="Optional estimated PSF PNG")
     parser.add_argument("--interim-output", type=Path, default=None, help="Optional interim latent PNG")
     parser.add_argument(
         "--method",
         choices=("baseline", "annealed-pnp", "extreme-channel"),
         default="baseline",
-        help="Baseline DCP or one of the two weight-free research refinements",
+        help=(
+            "baseline=full blind restoration, annealed-pnp=stochastic guarded refinement, "
+            "extreme-channel=dual-extreme guarded refinement"
+        ),
     )
-    parser.add_argument("--kernel-size", type=int, default=25)
-    parser.add_argument("--gamma", type=float, default=1.0)
-    parser.add_argument("--iterations", type=int, default=5)
+    parser.add_argument("--kernel-size", type=int, default=25, help="Odd PSF support size")
+    parser.add_argument("--gamma", type=float, default=1.0, help="Gamma used during PSF estimation")
+    parser.add_argument("--iterations", type=int, default=5, help="Blind image/kernel alternations per scale")
     parser.add_argument("--lambda-dark", type=float, default=4e-3)
     parser.add_argument("--lambda-grad", type=float, default=4e-3)
-    parser.add_argument("--fast", action="store_true", help="Use capped optimization loops for a quicker preview")
-    parser.add_argument("--seed", type=int, default=0, help="Seed for annealed-pnp stochastic candidates")
+    parser.add_argument("--lambda-tv", type=float, default=3e-3)
+    parser.add_argument("--lambda-l0", type=float, default=5e-4)
+    parser.add_argument("--ring-weight", type=float, default=1.0)
+    parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Preview mode: cap optimization loops. Do not use for quality benchmarking.",
+    )
+    parser.add_argument("--seed", type=int, default=0, help="Seed for annealed-pnp candidates")
     parser.add_argument("--opencv-threads", type=int, default=0, help="0 lets OpenCV decide")
     return parser
 
@@ -45,6 +57,9 @@ def main(argv: list[str] | None = None) -> int:
         xk_iter=args.iterations,
         lambda_dark=args.lambda_dark,
         lambda_grad=args.lambda_grad,
+        lambda_tv=args.lambda_tv,
+        lambda_l0=args.lambda_l0,
+        weight_ring=args.ring_weight,
         max_grad_steps=12 if args.fast else None,
         max_dark_steps=5 if args.fast else None,
     )
@@ -52,9 +67,20 @@ def main(argv: list[str] | None = None) -> int:
     start = time.perf_counter()
     baseline, kernel, interim = deblur_image(image, cfg)
     if args.method == "annealed-pnp":
-        result = annealed_pnp_refine(image, baseline, kernel, seed=args.seed, workers=cfg.fft_workers)
+        result = annealed_pnp_refine(
+            image,
+            baseline,
+            kernel,
+            seed=args.seed,
+            workers=cfg.fft_workers,
+        )
     elif args.method == "extreme-channel":
-        result = extreme_channel_refine(image, baseline, kernel, workers=cfg.fft_workers)
+        result = extreme_channel_refine(
+            image,
+            baseline,
+            kernel,
+            workers=cfg.fft_workers,
+        )
     else:
         result = baseline
     elapsed = time.perf_counter() - start
