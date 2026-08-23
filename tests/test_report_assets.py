@@ -5,12 +5,23 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+SATURATED_CASES = {
+    "26.png",
+    "IMG_0650_small_patch.png",
+    "IMG_0664_small_patch.png",
+    "IMG_4548_small.png",
+    "IMG_4561.JPG",
+    "blurry_2_small.png",
+    "blurry_7.png",
+    "my_test_car6.png",
+}
 
 
 def test_docker_report_workflow_files_exist() -> None:
     required = [
         ROOT / "scripts" / "run_docker_test.py",
         ROOT / "scripts" / "generate_report.py",
+        ROOT / "scripts" / "generate_matlab_parity_report.py",
         ROOT / "dataset" / "benchmark_profiles.json",
         ROOT / "results" / ".gitkeep",
     ]
@@ -36,6 +47,10 @@ def test_benchmark_profiles_cover_every_source_with_valid_support() -> None:
         assert float(profile["gamma"]) > 0, name
         assert float(profile["lambda_tv"]) >= 0, name
         assert float(profile["lambda_l0"]) >= 0, name
+        assert isinstance(profile["saturated"], bool), name
+
+    configured_saturated = {name for name, p in profiles.items() if p["saturated"]}
+    assert configured_saturated == SATURATED_CASES
 
     # Regression guards for support mismatches exposed by the full visual audit.
     assert int(profiles["7_patch_use.png"]["kernel_size"]) == 85
