@@ -14,11 +14,12 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install --no-cache-dir ".[dev]"
 
-# Regression assets and test/report tooling are intentionally copied into the
-# image: docker-compose's test service validates the real reference images and
-# writes a portable comparison report to /app/results.
+# CI validates every source image committed under dataset/image. The large
+# historical result folders are excluded via .dockerignore so image builds stay
+# compact while the real 23-image source set remains inside the container.
 COPY tests ./tests
 COPY examples ./examples
+COPY dataset/image ./dataset/image
 COPY scripts ./scripts
 RUN mkdir -p /app/results
 

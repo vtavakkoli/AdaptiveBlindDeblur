@@ -9,20 +9,28 @@ import cv2
 from .config import DeblurConfig
 from .deblur import deblur_image
 from .io import read_image, write_image
+from .refinement import annealed_pnp_refine, extreme_channel_refine
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Blind image deblurring with a dark-channel prior")
+    parser = argparse.ArgumentParser(description="Blind image deblurring with dark/extreme-channel priors")
     parser.add_argument("input", type=Path, help="Blurred input image")
     parser.add_argument("output", type=Path, help="Deblurred output image")
     parser.add_argument("--kernel-output", type=Path, default=None, help="Optional estimated kernel PNG")
     parser.add_argument("--interim-output", type=Path, default=None, help="Optional interim latent PNG")
+    parser.add_argument(
+        "--method",
+        choices=("baseline", "annealed-pnp", "extreme-channel"),
+        default="baseline",
+        help="Baseline DCP or one of the two weight-free research refinements",
+    )
     parser.add_argument("--kernel-size", type=int, default=25)
     parser.add_argument("--gamma", type=float, default=1.0)
     parser.add_argument("--iterations", type=int, default=5)
     parser.add_argument("--lambda-dark", type=float, default=4e-3)
     parser.add_argument("--lambda-grad", type=float, default=4e-3)
     parser.add_argument("--fast", action="store_true", help="Use capped optimization loops for a quicker preview")
+    parser.add_argument("--seed", type=int, default=0, help="Seed for annealed-pnp stochastic candidates")
     parser.add_argument("--opencv-threads", type=int, default=0, help="0 lets OpenCV decide")
     return parser
 
@@ -42,7 +50,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     image = read_image(args.input)
     start = time.perf_counter()
-    result, kernel, interim = deblur_image(image, cfg)
+    baseline, kernel, interim = deblur_image(image, cfg)
+    if args.method == "annealed-pnp":
+        result = annealed_pnp_refine(image, baseline, kernel, seed=args.seed, workers=cfg.fft_workers)
+    elif args.method == "extreme-channel":
+        result = extreme_channel_refine(image, baseline, kernel, workers=cfg.fft_workers)
+    else:
+        result = baseline
     elapsed = time.perf_counter() - start
     write_image(args.output, result)
     if args.kernel_output:
@@ -50,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
         write_image(args.kernel_output, vis)
     if args.interim_output:
         write_image(args.interim_output, interim)
-    print(f"Deblurred {args.input} -> {args.output} in {elapsed:.2f}s")
+    print(f"Deblurred {args.input} -> {args.output} using {args.method} in {elapsed:.2f}s")
     return 0
 
 
