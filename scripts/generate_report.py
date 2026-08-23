@@ -4,250 +4,428 @@ from __future__ import annotations
 import html
 import json
 import math
+import re
 import shutil
 import time
 from pathlib import Path
+from statistics import mean
 
 import cv2
 import numpy as np
 
-from dark_channel_deblur import DeblurConfig, deblur_image
+from dark_channel_deblur import (
+    DeblurConfig,
+    annealed_pnp_refine,
+    deblur_image,
+    extreme_channel_refine,
+    reblur_image,
+)
+from dark_channel_deblur.dark_channel import dark_channel
 from dark_channel_deblur.io import read_image, write_image
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE = ROOT / "examples" / "real_img2"
+DATASET = ROOT / "dataset" / "image"
 RESULTS = ROOT / "results"
+SUPPORTED = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+EXPECTED_IMAGES = 23
+
+# Two explicit blurred/clean pairs contained in the authors' image folder.
+REFERENCE_PAIRS = {
+    "26.blurred": "26",
+    "flower_blurred": "flower",
+}
+
+METHODS = {
+    "baseline": {
+        "name": "Dark Channel Baseline",
+        "short": "DCP",
+        "description": "Fast Python port of Pan et al. CVPR 2016. Blind kernel estimation + TV/L0 restoration.",
+    },
+    "annealed_pnp": {
+        "name": "Annealed Gaussian PnP",
+        "short": "A-PnP",
+        "description": "Diffusion-inspired, weight-free refinement: annealed Gaussian perturbations, NLM denoising prior, and explicit blur-model data consistency.",
+    },
+    "extreme_channel": {
+        "name": "Extreme-Channel Guided",
+        "short": "ECP-R",
+        "description": "Dark+bright extreme-channel guided detail refinement with explicit blur-model data consistency.",
+    },
+}
 
 
-def load_image(path: Path, gray: bool = False) -> np.ndarray:
-    flag = cv2.IMREAD_GRAYSCALE if gray else cv2.IMREAD_COLOR
-    image = cv2.imread(str(path), flag)
-    if image is None:
-        raise FileNotFoundError(path)
-    if not gray:
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    return image.astype(np.float64) / 255.0
+def dataset_images() -> list[Path]:
+    return sorted(p for p in DATASET.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED)
 
 
-def psnr(a: np.ndarray, b: np.ndarray) -> float:
-    mse = float(np.mean(np.square(a - b)))
-    return float("inf") if mse == 0 else float(10 * np.log10(1 / mse))
+def slugify(name: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9._-]+", "_", name).strip("._") or "image"
 
 
-def ssim(a: np.ndarray, b: np.ndarray) -> float:
+def gray(image: np.ndarray) -> np.ndarray:
+    arr = np.asarray(image, dtype=np.float32)
+    return cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY) if arr.ndim == 3 else arr
+
+
+def psnr(candidate: np.ndarray, reference: np.ndarray) -> float:
+    mse = float(np.mean((np.asarray(candidate, np.float64) - np.asarray(reference, np.float64)) ** 2))
+    return 120.0 if mse <= 1e-12 else float(10.0 * math.log10(1.0 / mse))
+
+
+def ssim(candidate: np.ndarray, reference: np.ndarray) -> float:
+    a = np.asarray(candidate, np.float64)
+    b = np.asarray(reference, np.float64)
+    if a.shape != b.shape:
+        raise ValueError(f"SSIM shape mismatch: {a.shape} != {b.shape}")
     if a.ndim == 2:
         a, b = a[..., None], b[..., None]
     c1, c2 = 0.01**2, 0.03**2
     scores: list[float] = []
-    for c in range(a.shape[2]):
-        x, y = a[..., c], b[..., c]
+    for channel in range(a.shape[2]):
+        x, y = a[..., channel], b[..., channel]
         mx = cv2.GaussianBlur(x, (11, 11), 1.5)
         my = cv2.GaussianBlur(y, (11, 11), 1.5)
         vx = cv2.GaussianBlur(x * x, (11, 11), 1.5) - mx * mx
         vy = cv2.GaussianBlur(y * y, (11, 11), 1.5) - my * my
         vxy = cv2.GaussianBlur(x * y, (11, 11), 1.5) - mx * my
-        score = ((2 * mx * my + c1) * (2 * vxy + c2)) / ((mx * mx + my * my + c1) * (vx + vy + c2))
-        core = score[5:-5, 5:-5] if min(score.shape) > 10 else score
+        score = ((2 * mx * my + c1) * (2 * vxy + c2)) / (
+            (mx * mx + my * my + c1) * (vx + vy + c2) + 1e-12
+        )
+        core = score[5:-5, 5:-5] if min(score.shape) > 12 else score
         scores.append(float(np.mean(core)))
     return float(np.mean(scores))
 
 
-def image_metrics(candidate: np.ndarray, reference: np.ndarray) -> dict[str, float]:
-    if candidate.shape != reference.shape:
-        raise ValueError(f"shape mismatch: {candidate.shape} != {reference.shape}")
-    return {"psnr_db": psnr(candidate, reference), "ssim": ssim(candidate, reference)}
+def sharpness(image: np.ndarray) -> float:
+    g = gray(image)
+    gx = cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize=3)
+    return float(np.mean(np.sqrt(gx * gx + gy * gy)))
 
 
-def kernel_metrics(candidate: np.ndarray, reference: np.ndarray) -> dict[str, float]:
-    candidate = np.asarray(candidate, np.float64)
-    reference = np.asarray(reference, np.float64)
-    candidate /= max(float(candidate.sum()), 1e-12)
-    reference /= max(float(reference.sum()), 1e-12)
-    return {
-        "correlation": float(np.corrcoef(candidate.ravel(), reference.ravel())[0, 1]),
-        "l1_distance": float(np.abs(candidate - reference).sum()),
+def noise_mad(image: np.ndarray) -> float:
+    lap = cv2.Laplacian(gray(image), cv2.CV_32F)
+    med = float(np.median(lap))
+    return float(np.median(np.abs(lap - med)))
+
+
+def extreme_metrics(image: np.ndarray, patch: int = 9) -> tuple[float, float]:
+    arr = np.asarray(image, dtype=np.float32)
+    footprint = np.ones((patch, patch), dtype=np.uint8)
+    if arr.ndim == 2:
+        local_dark = cv2.erode(arr, footprint)
+        local_bright = cv2.dilate(arr, footprint)
+    else:
+        local_dark = cv2.erode(np.min(arr, axis=2), footprint)
+        local_bright = cv2.dilate(np.max(arr, axis=2), footprint)
+    return float(np.mean(local_dark < 0.03)), float(np.mean(local_bright > 0.97))
+
+
+def diagnostics(
+    output: np.ndarray,
+    observed: np.ndarray,
+    kernel: np.ndarray,
+    *,
+    workers: int,
+    reference: np.ndarray | None = None,
+) -> dict[str, float | None]:
+    predicted = reblur_image(output, kernel, workers=workers)
+    dark_fraction, bright_fraction = extreme_metrics(output)
+    row: dict[str, float | None] = {
+        "reblur_rmse": float(np.sqrt(np.mean((predicted - observed) ** 2))),
+        "sharpness": sharpness(output),
+        "noise_mad": noise_mad(output),
+        "dark_fraction": dark_fraction,
+        "bright_fraction": bright_fraction,
+        "psnr_db": None,
+        "ssim": None,
     }
+    if reference is not None:
+        if reference.shape != output.shape:
+            reference = cv2.resize(reference, (output.shape[1], output.shape[0]), interpolation=cv2.INTER_AREA)
+        row["psnr_db"] = psnr(output, reference)
+        row["ssim"] = ssim(output, reference)
+    return row
 
 
-def fmt(value: float | None, digits: int = 4) -> str:
-    if value is None:
-        return "—"
-    if math.isinf(value):
-        return "∞"
-    return f"{value:.{digits}f}"
+def _mean(rows: list[dict[str, float | None]], key: str) -> float | None:
+    values = [float(row[key]) for row in rows if row.get(key) is not None]
+    return mean(values) if values else None
 
 
-def copy_asset(src: Path, dst: Path) -> str:
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dst)
-    return dst.name
+def _fmt(value: float | None, digits: int = 4) -> str:
+    return "—" if value is None else f"{value:.{digits}f}"
 
 
-def card(title: str, image: str, subtitle: str, badge: str = "") -> str:
-    badge_html = f'<span class="badge">{html.escape(badge)}</span>' if badge else ""
+def _card(title: str, image_path: str, subtitle: str, badge: str = "") -> str:
+    tag = f'<span class="badge">{html.escape(badge)}</span>' if badge else ""
     return (
         '<article class="card"><div class="card-head"><div>'
-        f'<h3>{html.escape(title)}</h3><p>{html.escape(subtitle)}</p></div>{badge_html}</div>'
-        f'<img src="{html.escape(image)}" alt="{html.escape(title)}"></article>'
+        f'<h4>{html.escape(title)}</h4><p>{html.escape(subtitle)}</p></div>{tag}</div>'
+        f'<img loading="lazy" src="{html.escape(image_path)}" alt="{html.escape(title)}"></article>'
     )
 
 
+def _method_table(rows: dict[str, dict[str, float | None]], runtimes: dict[str, float]) -> str:
+    body = []
+    for key in ("baseline", "annealed_pnp", "extreme_channel"):
+        d = rows[key]
+        body.append(
+            "<tr>"
+            f"<td><strong>{html.escape(METHODS[key]['name'])}</strong></td>"
+            f"<td>{runtimes[key]:.3f}s</td>"
+            f"<td>{_fmt(d['reblur_rmse'], 5)}</td>"
+            f"<td>{_fmt(d['sharpness'], 4)}</td>"
+            f"<td>{_fmt(d['noise_mad'], 5)}</td>"
+            f"<td>{_fmt(d['dark_fraction'], 3)}</td>"
+            f"<td>{_fmt(d['bright_fraction'], 3)}</td>"
+            f"<td>{_fmt(d['psnr_db'], 2)}</td>"
+            f"<td>{_fmt(d['ssim'], 4)}</td>"
+            "</tr>"
+        )
+    return "".join(body)
+
+
 def generate_report(output_dir: Path = RESULTS) -> Path:
+    images = dataset_images()
+    if len(images) != EXPECTED_IMAGES:
+        raise RuntimeError(f"dataset/image contains {len(images)} images; expected {EXPECTED_IMAGES}")
+
     output_dir.mkdir(parents=True, exist_ok=True)
     for path in output_dir.iterdir():
         if path.name == ".gitkeep":
             continue
         shutil.rmtree(path) if path.is_dir() else path.unlink()
+    images_out = output_dir / "images"
+    images_out.mkdir(parents=True, exist_ok=True)
 
-    sources = {
-        "input": EXAMPLE / "input_compare.jpg",
-        "matlab": EXAMPLE / "matlab_reference" / "result_compare.jpg",
-        "previous_full": EXAMPLE / "python" / "full_result_compare.jpg",
-        "previous_fast": EXAMPLE / "python" / "fast_result_compare.jpg",
-    }
-    kernels = {
-        "matlab": EXAMPLE / "matlab_reference" / "kernel.png",
-        "previous_full": EXAMPLE / "python" / "full_kernel.png",
-        "previous_fast": EXAMPLE / "python" / "fast_kernel.png",
-    }
-    for path in [*sources.values(), *kernels.values(), EXAMPLE / "metrics.json"]:
-        if not path.is_file():
-            raise FileNotFoundError(f"required benchmark asset is missing: {path}")
-
-    copied = {
-        "input": copy_asset(sources["input"], output_dir / "input.jpg"),
-        "matlab": copy_asset(sources["matlab"], output_dir / "matlab_reference.jpg"),
-        "previous_full": copy_asset(sources["previous_full"], output_dir / "previous_python_full.jpg"),
-        "previous_fast": copy_asset(sources["previous_fast"], output_dir / "previous_python_fast.jpg"),
-        "matlab_kernel": copy_asset(kernels["matlab"], output_dir / "matlab_kernel.png"),
-        "previous_full_kernel": copy_asset(kernels["previous_full"], output_dir / "previous_python_full_kernel.png"),
-        "previous_fast_kernel": copy_asset(kernels["previous_fast"], output_dir / "previous_python_fast_kernel.png"),
-    }
-
-    config = DeblurConfig(
-        kernel_size=25,
+    cfg = DeblurConfig(
+        kernel_size=15,
         lambda_dark=4e-3,
         lambda_grad=4e-3,
         gamma_correct=1.0,
-        xk_iter=5,
+        xk_iter=2,
         lambda_tv=3e-3,
         lambda_l0=5e-4,
         weight_ring=1.0,
-        max_grad_steps=12,
-        max_dark_steps=5,
+        dark_patch_size=21,
+        max_grad_steps=8,
+        max_dark_steps=3,
         fft_workers=-1,
     )
-    input_float = read_image(sources["input"])
-    started = time.perf_counter()
-    result, kernel, interim = deblur_image(input_float, config)
-    runtime = time.perf_counter() - started
 
-    if result.shape != input_float.shape or not np.isfinite(result).all():
-        raise RuntimeError("generated result is invalid")
-    if kernel.shape != (25, 25) or not np.isfinite(kernel).all() or float(kernel.sum()) <= 0:
-        raise RuntimeError("generated kernel is invalid")
+    by_stem = {path.stem: path for path in images}
+    per_image: list[dict[str, object]] = []
+    metric_sets: dict[str, list[dict[str, float | None]]] = {key: [] for key in METHODS}
+    runtime_sets: dict[str, list[float]] = {key: [] for key in METHODS}
+    total_started = time.perf_counter()
 
-    write_image(output_dir / "new_python_result.png", result)
-    write_image(output_dir / "new_python_interim.png", interim)
-    write_image(output_dir / "new_python_kernel.png", kernel / max(float(kernel.max()), 1e-12))
+    for index, path in enumerate(images, 1):
+        print(f"[{index:02d}/{len(images)}] benchmarking {path.name}", flush=True)
+        observed = read_image(path)
+        case_dir = images_out / f"{index:02d}_{slugify(path.stem)}"
+        case_dir.mkdir(parents=True, exist_ok=True)
+        write_image(case_dir / "input.png", observed)
 
-    reference = load_image(sources["matlab"])
-    image_rows = {
-        "blurred_input": image_metrics(load_image(sources["input"]), reference),
-        "previous_python_full": image_metrics(load_image(sources["previous_full"]), reference),
-        "previous_python_fast": image_metrics(load_image(sources["previous_fast"]), reference),
-        "new_python_docker": image_metrics(load_image(output_dir / "new_python_result.png"), reference),
-    }
-    reference_kernel = load_image(kernels["matlab"], gray=True)
-    kernel_rows = {
-        "previous_python_full": kernel_metrics(load_image(kernels["previous_full"], gray=True), reference_kernel),
-        "previous_python_fast": kernel_metrics(load_image(kernels["previous_fast"], gray=True), reference_kernel),
-        "new_python_docker": kernel_metrics(kernel, reference_kernel),
-    }
-    historical = json.loads((EXAMPLE / "metrics.json").read_text(encoding="utf-8"))
+        reference = None
+        reference_name = REFERENCE_PAIRS.get(path.stem)
+        if reference_name and reference_name in by_stem:
+            reference = read_image(by_stem[reference_name])
+            if reference.shape != observed.shape:
+                reference = cv2.resize(reference, (observed.shape[1], observed.shape[0]), interpolation=cv2.INTER_AREA)
+            write_image(case_dir / "ground_truth.png", reference)
+
+        started = time.perf_counter()
+        baseline, kernel, interim = deblur_image(observed, cfg)
+        baseline_time = time.perf_counter() - started
+
+        started = time.perf_counter()
+        annealed = annealed_pnp_refine(
+            observed,
+            baseline,
+            kernel,
+            steps=4,
+            sigma_start=0.025,
+            sigma_end=0.004,
+            candidates=2,
+            seed=index,
+            workers=cfg.fft_workers,
+        )
+        annealed_time = time.perf_counter() - started
+
+        started = time.perf_counter()
+        extreme = extreme_channel_refine(
+            observed,
+            baseline,
+            kernel,
+            steps=3,
+            patch_size=15,
+            workers=cfg.fft_workers,
+        )
+        extreme_time = time.perf_counter() - started
+
+        outputs = {
+            "baseline": baseline,
+            "annealed_pnp": annealed,
+            "extreme_channel": extreme,
+        }
+        runtimes = {
+            "baseline": baseline_time,
+            "annealed_pnp": annealed_time,
+            "extreme_channel": extreme_time,
+        }
+        write_image(case_dir / "baseline.png", baseline)
+        write_image(case_dir / "annealed_pnp.png", annealed)
+        write_image(case_dir / "extreme_channel.png", extreme)
+        write_image(case_dir / "interim.png", interim)
+        write_image(case_dir / "kernel.png", kernel / max(float(kernel.max()), 1e-12))
+
+        rows: dict[str, dict[str, float | None]] = {}
+        for method, output in outputs.items():
+            if output.shape != observed.shape or not np.isfinite(output).all():
+                raise RuntimeError(f"{method} produced invalid output for {path.name}")
+            row = diagnostics(output, observed, kernel, workers=cfg.fft_workers, reference=reference)
+            rows[method] = row
+            metric_sets[method].append(row)
+            runtime_sets[method].append(runtimes[method])
+
+        per_image.append(
+            {
+                "index": index,
+                "name": path.name,
+                "stem": path.stem,
+                "shape": list(observed.shape),
+                "result_dir": str(case_dir.relative_to(output_dir)).replace("\\", "/"),
+                "ground_truth": reference_name,
+                "kernel_sum": float(kernel.sum()),
+                "kernel_peak": float(kernel.max()),
+                "runtimes_seconds": runtimes,
+                "metrics": rows,
+            }
+        )
+
+    total_runtime = time.perf_counter() - total_started
+    aggregate: dict[str, dict[str, float | None]] = {}
+    for method in METHODS:
+        aggregate[method] = {
+            "runtime_seconds_mean": mean(runtime_sets[method]),
+            "runtime_seconds_total": sum(runtime_sets[method]),
+            "reblur_rmse_mean": _mean(metric_sets[method], "reblur_rmse"),
+            "sharpness_mean": _mean(metric_sets[method], "sharpness"),
+            "noise_mad_mean": _mean(metric_sets[method], "noise_mad"),
+            "dark_fraction_mean": _mean(metric_sets[method], "dark_fraction"),
+            "bright_fraction_mean": _mean(metric_sets[method], "bright_fraction"),
+            "paired_psnr_db_mean": _mean(metric_sets[method], "psnr_db"),
+            "paired_ssim_mean": _mean(metric_sets[method], "ssim"),
+        }
 
     report = {
-        "benchmark": "real_img2 compact CI benchmark",
-        "reference": "authors' saved MATLAB output from the supplied CVPR 2016 release",
-        "new_method": {
-            "name": "Python Docker fast mode",
-            "runtime_seconds": runtime,
-            "parameters": {
-                "kernel_size": config.kernel_size,
-                "lambda_dark": config.lambda_dark,
-                "lambda_grad": config.lambda_grad,
-                "gamma_correct": config.gamma_correct,
-                "xk_iter": config.xk_iter,
-                "lambda_tv": config.lambda_tv,
-                "lambda_l0": config.lambda_l0,
-                "max_grad_steps": config.max_grad_steps,
-                "max_dark_steps": config.max_dark_steps,
-            },
+        "benchmark": "CVPR 2016 dark-channel release image-folder benchmark",
+        "dataset": {
+            "path": "dataset/image",
+            "source": "official cvpr16_deblurring_code_v1.zip linked by Jinshan Pan",
+            "image_count": len(images),
+            "ci_max_side_pixels": max(max(read_image(p).shape[:2]) for p in images),
+            "ground_truth_pairs": REFERENCE_PAIRS,
         },
-        "preview_agreement_with_matlab": image_rows,
-        "preview_kernel_agreement_with_matlab": kernel_rows,
-        "historical_full_size_run": historical,
+        "methods": METHODS,
+        "fairness": "Each image uses one blind DCP kernel estimate; both new refinements reuse that same kernel.",
+        "total_runtime_seconds": total_runtime,
+        "config": {
+            "kernel_size": cfg.kernel_size,
+            "xk_iter": cfg.xk_iter,
+            "lambda_dark": cfg.lambda_dark,
+            "lambda_grad": cfg.lambda_grad,
+            "dark_patch_size": cfg.dark_patch_size,
+            "max_grad_steps": cfg.max_grad_steps,
+            "max_dark_steps": cfg.max_dark_steps,
+        },
+        "aggregate": aggregate,
+        "images": per_image,
+        "metric_notes": {
+            "reblur_rmse": "Lower is better measurement consistency: reblur(restored, estimated_kernel) vs observed input.",
+            "sharpness": "Mean Sobel magnitude. Higher means more edge energy, but can also reward ringing/noise.",
+            "noise_mad": "Laplacian median absolute deviation. Diagnostic only; lower is not always perceptually better.",
+            "dark_fraction": "Fraction of 9x9 local dark-channel values below 0.03.",
+            "bright_fraction": "Fraction of 9x9 local bright-channel values above 0.97.",
+            "psnr_ssim": "Only reported for explicit blurred/clean pairs present in the supplied folder.",
+        },
     }
     (output_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
 
-    rows = [
-        ("Blurred input", image_rows["blurred_input"], None, "Baseline"),
-        ("Previous Python full", image_rows["previous_python_full"], kernel_rows["previous_python_full"], "Previous"),
-        ("Previous Python fast", image_rows["previous_python_fast"], kernel_rows["previous_python_fast"], "Previous"),
-        ("New Python Docker", image_rows["new_python_docker"], kernel_rows["new_python_docker"], "Current"),
-    ]
-    metric_rows = "".join(
-        f"<tr><td><strong>{html.escape(name)}</strong><span class='pill'>{tag}</span></td>"
-        f"<td>{fmt(values['psnr_db'], 2)} dB</td><td>{fmt(values['ssim'])}</td>"
-        f"<td>{fmt(kvalues['correlation']) if kvalues else '—'}</td>"
-        f"<td>{fmt(kvalues['l1_distance']) if kvalues else '—'}</td></tr>"
-        for name, values, kvalues, tag in rows
+    agg_rows = "".join(
+        "<tr>"
+        f"<td><strong>{html.escape(METHODS[key]['name'])}</strong><small>{html.escape(METHODS[key]['description'])}</small></td>"
+        f"<td>{aggregate[key]['runtime_seconds_total']:.2f}s</td>"
+        f"<td>{_fmt(aggregate[key]['reblur_rmse_mean'], 5)}</td>"
+        f"<td>{_fmt(aggregate[key]['sharpness_mean'], 4)}</td>"
+        f"<td>{_fmt(aggregate[key]['noise_mad_mean'], 5)}</td>"
+        f"<td>{_fmt(aggregate[key]['dark_fraction_mean'], 3)}</td>"
+        f"<td>{_fmt(aggregate[key]['bright_fraction_mean'], 3)}</td>"
+        f"<td>{_fmt(aggregate[key]['paired_psnr_db_mean'], 2)}</td>"
+        f"<td>{_fmt(aggregate[key]['paired_ssim_mean'], 4)}</td>"
+        "</tr>"
+        for key in ("baseline", "annealed_pnp", "extreme_channel")
     )
-    cards = "".join([
-        card("Blurred input", copied["input"], "Image passed to the Docker test", "Input"),
-        card("Original MATLAB", copied["matlab"], "Authors' released CVPR 2016 result", "Reference"),
-        card("Previous Python full", copied["previous_full"], "Snapshot from the earlier full Python run", "Previous"),
-        card("Previous Python fast", copied["previous_fast"], "Snapshot from the earlier optimized run", "Previous"),
-        card("New Python Docker", "new_python_result.png", f"Fresh output generated by docker compose test · {runtime:.2f}s", "Current"),
-    ])
-    kernel_cards = "".join([
-        card("MATLAB kernel", copied["matlab_kernel"], "25×25 reference PSF"),
-        card("Previous full kernel", copied["previous_full_kernel"], "Earlier Python estimate"),
-        card("Previous fast kernel", copied["previous_fast_kernel"], "Earlier optimized estimate"),
-        card("New Docker kernel", "new_python_kernel.png", "Fresh estimate generated in this test"),
-    ])
-    hist = historical["agreement_with_matlab_reference"]
-    hist_kernel = historical["kernel_agreement_with_matlab_reference"]
 
-    report_html = f'''<!doctype html>
+    cases_html: list[str] = []
+    for case in per_image:
+        idx = int(case["index"])
+        name = str(case["name"])
+        rel = str(case["result_dir"])
+        rows = case["metrics"]  # type: ignore[assignment]
+        runtimes = case["runtimes_seconds"]  # type: ignore[assignment]
+        gt = case["ground_truth"]
+        cards = [
+            _card("Observed input", f"{rel}/input.png", "Official source image / CI working copy", "Input"),
+            _card(METHODS["baseline"]["name"], f"{rel}/baseline.png", "Blind DCP result and shared kernel", "Baseline"),
+            _card(METHODS["annealed_pnp"]["name"], f"{rel}/annealed_pnp.png", "Gaussian annealing + PnP data consistency", "New"),
+            _card(METHODS["extreme_channel"]["name"], f"{rel}/extreme_channel.png", "Dark + bright extrema guided refinement", "New"),
+        ]
+        if gt:
+            cards.append(_card("Ground truth", f"{rel}/ground_truth.png", f"Paired clean image: {gt}", "GT"))
+        cards.append(_card("Estimated kernel", f"{rel}/kernel.png", "Shared PSF used by all three output methods", "PSF"))
+        gt_note = f" · paired clean reference: <strong>{html.escape(str(gt))}</strong>" if gt else ""
+        cases_html.append(
+            f'<details class="case" {"open" if idx <= 2 else ""}>'
+            f'<summary><span><b>{idx:02d}</b> {html.escape(name)}</span><span class="summary-note">{gt_note}</span></summary>'
+            f'<div class="cards">{"".join(cards)}</div>'
+            '<div class="table-wrap"><table><thead><tr><th>Method</th><th>Runtime</th><th>Reblur RMSE ↓</th>'
+            '<th>Sharpness ↑*</th><th>Noise MAD*</th><th>Dark frac.</th><th>Bright frac.</th><th>PSNR ↑</th><th>SSIM ↑</th></tr></thead>'
+            f'<tbody>{_method_table(rows, runtimes)}</tbody></table></div></details>'
+        )
+
+    html_doc = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Dark Channel Deblur · Docker Comparison Report</title>
+<title>Dark Channel Deblur · Full Dataset Research Report</title>
 <style>
-:root{{--bg:#f5f7fb;--panel:#fff;--ink:#172033;--muted:#64748b;--line:#e2e8f0;--accent:#335cff;--good:#0f9d75;--shadow:0 12px 36px rgba(15,23,42,.08)}}
-*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}main{{max-width:1280px;margin:auto;padding:42px 24px 64px}}
-header{{background:linear-gradient(135deg,#111827,#263b73);color:#fff;border-radius:24px;padding:34px 38px;box-shadow:var(--shadow)}}.eyebrow{{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#a9c0ff}}h1{{font-size:34px;line-height:1.15;margin:8px 0}}header p{{margin:0;color:#dbe5ff;max-width:850px}}
-.kpis{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:22px}}.kpi{{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:13px 15px}}.kpi b{{display:block;font-size:21px}}.kpi span{{font-size:12px;color:#cdd9f8}}
-section{{margin-top:34px}}h2{{font-size:23px;margin:0 0 6px}}.lead{{color:var(--muted);margin:0 0 16px}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px}}.card{{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:var(--shadow)}}.card-head{{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;margin-bottom:10px}}.card h3{{font-size:15px;margin:0 0 2px}}.card p{{font-size:12px;color:var(--muted);margin:0}}.card img{{display:block;width:100%;height:auto;border-radius:12px;background:#eef2f7}}
-.badge,.pill{{display:inline-block;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;background:#e9efff;color:#244bcc;white-space:nowrap}}.pill{{margin-left:8px;background:#eef2f7;color:#64748b}}.table-wrap{{overflow:auto;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}}table{{border-collapse:collapse;width:100%;min-width:720px}}th,td{{padding:13px 15px;border-bottom:1px solid var(--line);text-align:right}}th:first-child,td:first-child{{text-align:left}}th{{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:#f8fafc}}tr:last-child td{{border-bottom:0}}
-.note{{padding:14px 16px;border-left:4px solid var(--accent);background:#eef3ff;border-radius:10px;color:#31456f}}.historical{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}}.hist-card{{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:var(--shadow)}}.hist-card b{{font-size:25px;color:var(--good)}}code{{background:#eef2f7;border-radius:6px;padding:2px 5px}}footer{{color:var(--muted);font-size:12px;margin-top:30px}}@media(max-width:760px){{main{{padding:20px 14px 40px}}header{{padding:26px 22px}}h1{{font-size:27px}}.kpis,.historical{{grid-template-columns:1fr 1fr}}}}
+:root{{--bg:#f4f7fb;--panel:#fff;--ink:#142033;--muted:#65748b;--line:#dfe6ef;--blue:#315efb;--purple:#7257d5;--green:#0d9a74;--shadow:0 12px 35px rgba(25,42,70,.08)}}
+*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}}main{{max-width:1440px;margin:auto;padding:38px 24px 64px}}
+.hero{{background:linear-gradient(135deg,#101a31 0%,#253d7a 58%,#49388d 100%);color:white;border-radius:26px;padding:34px 38px;box-shadow:var(--shadow)}}.eyebrow{{font-size:11px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:#bcd0ff}}h1{{font-size:34px;line-height:1.15;margin:7px 0 10px}}.hero>p{{max-width:980px;color:#dce6ff;margin:0}}.kpis{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:22px}}.kpi{{padding:13px 15px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:14px}}.kpi b{{display:block;font-size:22px}}.kpi span{{font-size:11px;color:#d1dcf8}}
+section{{margin-top:30px}}h2{{font-size:23px;margin:0 0 6px}}.lead{{color:var(--muted);margin:0 0 15px}}.notice{{background:#eef3ff;border-left:4px solid var(--blue);padding:14px 16px;border-radius:10px;margin:16px 0;color:#30466f}}.methods{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}}.method{{background:white;border:1px solid var(--line);border-radius:17px;padding:17px;box-shadow:var(--shadow)}}.method b{{font-size:16px}}.method p{{color:var(--muted);margin:5px 0 0}}
+.table-wrap{{overflow:auto;background:white;border:1px solid var(--line);border-radius:17px;box-shadow:var(--shadow);margin-top:14px}}table{{border-collapse:collapse;width:100%;min-width:940px}}th,td{{padding:11px 13px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top}}th:first-child,td:first-child{{text-align:left}}th{{background:#f8fafc;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.055em}}td small{{display:block;color:var(--muted);font-weight:400;max-width:430px;margin-top:3px}}tr:last-child td{{border-bottom:0}}
+.case{{margin-top:13px;background:white;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}}summary{{cursor:pointer;padding:15px 17px;font-size:15px;display:flex;justify-content:space-between;gap:12px;background:#fbfcfe}}summary b{{display:inline-grid;place-items:center;width:29px;height:29px;margin-right:9px;border-radius:9px;background:#eaf0ff;color:#294fd2}}.summary-note{{font-size:12px;color:var(--muted);font-weight:400}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;padding:14px}}.card{{border:1px solid var(--line);border-radius:14px;padding:10px;background:#fff}}.card-head{{display:flex;justify-content:space-between;gap:7px;align-items:flex-start;margin-bottom:8px}}.card h4{{font-size:13px;margin:0}}.card p{{font-size:10px;color:var(--muted);margin:2px 0 0}}.card img{{display:block;width:100%;height:auto;border-radius:9px;background:#eef2f7}}.badge{{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:3px 6px;border-radius:999px;background:#eaf0ff;color:#294fd2;white-space:nowrap}}
+.foot{{font-size:12px;color:var(--muted);margin-top:24px}}code{{background:#eaf0f5;border-radius:5px;padding:2px 5px}}@media(max-width:800px){{main{{padding:18px 12px 38px}}.hero{{padding:25px 20px}}h1{{font-size:27px}}.kpis,.methods{{grid-template-columns:1fr 1fr}}}}@media(max-width:520px){{.kpis,.methods{{grid-template-columns:1fr}}}}
 </style></head><body><main>
-<header><div class="eyebrow">Automated Docker validation</div><h1>Dark Channel Deblur comparison report</h1><p>Fresh container output compared with the original MATLAB release and previous Python snapshots. The Docker test creates this report on every run.</p>
-<div class="kpis"><div class="kpi"><b>{runtime:.2f}s</b><span>new Docker runtime</span></div><div class="kpi"><b>{fmt(image_rows['new_python_docker']['ssim'])}</b><span>new SSIM vs MATLAB preview</span></div><div class="kpi"><b>{fmt(image_rows['new_python_docker']['psnr_db'],2)} dB</b><span>new PSNR vs MATLAB preview</span></div><div class="kpi"><b>{fmt(kernel_rows['new_python_docker']['correlation'])}</b><span>new kernel correlation</span></div></div></header>
-<section><h2>Visual comparison</h2><p class="lead">All images are copied into the result folder, so the HTML stays portable as a CI artifact.</p><div class="grid">{cards}</div></section>
-<section><h2>Fresh Docker-run metrics</h2><p class="lead">These metrics use the compact repository test assets and are regenerated inside the container.</p><div class="table-wrap"><table><thead><tr><th>Method</th><th>PSNR vs MATLAB</th><th>SSIM vs MATLAB</th><th>Kernel corr.</th><th>Kernel L1</th></tr></thead><tbody>{metric_rows}</tbody></table></div></section>
-<section><h2>Kernel comparison</h2><p class="lead">Estimated point-spread functions are shown with normalized intensity.</p><div class="grid">{kernel_cards}</div></section>
-<section><h2>Previous full-size benchmark</h2><p class="lead">Historical metrics from the earlier 480×360 run are kept separate from the compact CI benchmark.</p><div class="historical"><div class="hist-card"><div class="eyebrow" style="color:#64748b">Previous full</div><b>{hist['python_full']['ssim']:.4f} SSIM</b><p>{hist['python_full']['psnr_db']:.2f} dB PSNR · kernel correlation {hist_kernel['python_full']['correlation']:.4f} · {historical['python_runtime_seconds']['full']:.2f}s</p></div><div class="hist-card"><div class="eyebrow" style="color:#64748b">Previous fast</div><b>{hist['python_fast']['ssim']:.4f} SSIM</b><p>{hist['python_fast']['psnr_db']:.2f} dB PSNR · kernel correlation {hist_kernel['python_fast']['correlation']:.4f} · {historical['python_runtime_seconds']['fast']:.2f}s</p></div></div></section>
-<section><div class="note"><strong>Interpretation:</strong> MATLAB is an implementation-fidelity reference, not sharp-image ground truth. The Docker benchmark validates reproducibility and catches regressions; the historical metrics preserve the earlier full-size comparison.</div></section>
-<footer>Generated by <code>docker compose run --rm test</code>. Machine-readable metrics: <code>report.json</code>.</footer>
+<header class="hero"><div class="eyebrow">Automated full-dataset Docker benchmark</div><h1>Dark-channel deblurring · three-method research comparison</h1><p>Every image in the official CVPR 2016 release image folder is processed by the baseline and two new weight-free refinement variants. Both refinements reuse exactly the same estimated blur kernel, isolating the effect of the restoration prior.</p>
+<div class="kpis"><div class="kpi"><b>{len(images)}</b><span>dataset images</span></div><div class="kpi"><b>{len(images)*3}</b><span>restored outputs</span></div><div class="kpi"><b>{len(images)}</b><span>blind kernel estimates</span></div><div class="kpi"><b>{total_runtime:.1f}s</b><span>benchmark runtime</span></div></div></header>
+<section><h2>Methods</h2><p class="lead">The two additions are deliberately dependency-light research variants, not claims of reproducing a trained diffusion SOTA system.</p><div class="methods">
+<div class="method"><b>Dark Channel Baseline</b><p>{html.escape(METHODS['baseline']['description'])}</p></div>
+<div class="method"><b>Annealed Gaussian PnP</b><p>{html.escape(METHODS['annealed_pnp']['description'])}</p></div>
+<div class="method"><b>Extreme-Channel Guided</b><p>{html.escape(METHODS['extreme_channel']['description'])}</p></div></div>
+<div class="notice"><strong>How to read the metrics.</strong> Most images in this folder do not have a clean ground-truth counterpart. Reblur RMSE measures physical consistency with the observed blur model. Sharpness and noise MAD are diagnostics and should be interpreted together; stronger edges can also mean ringing. PSNR/SSIM are shown only for the two explicit blurred/clean pairs present in the release.</div></section>
+<section><h2>Aggregate diagnostics</h2><p class="lead">Averages over all {len(images)} inputs; paired PSNR/SSIM average only the two explicit reference pairs.</p><div class="table-wrap"><table><thead><tr><th>Method</th><th>Total runtime</th><th>Reblur RMSE ↓</th><th>Sharpness ↑*</th><th>Noise MAD*</th><th>Dark frac.</th><th>Bright frac.</th><th>Paired PSNR ↑</th><th>Paired SSIM ↑</th></tr></thead><tbody>{agg_rows}</tbody></table></div></section>
+<section><h2>Per-image visual comparison</h2><p class="lead">Open any image to compare input, three restorations, the shared kernel, and metrics.</p>{''.join(cases_html)}</section>
+<p class="foot">Generated by <code>docker compose run --rm test</code>. Dataset source: authors' official <code>cvpr16_deblurring_code_v1.zip</code>. Baseline: Pan et al., CVPR 2016. Extreme-channel motivation: Yan et al., CVPR 2017. Annealed PnP is diffusion-inspired but uses no neural checkpoint. Machine-readable results: <code>report.json</code>.</p>
 </main></body></html>'''
     report_path = output_dir / "report.html"
-    report_path.write_text(report_html, encoding="utf-8")
+    report_path.write_text(html_doc, encoding="utf-8")
+    print(f"Full dataset report written to {report_path}")
     return report_path
 
 
 def main() -> int:
-    path = generate_report()
-    print(f"Comparison report written to {path}")
+    generate_report()
     return 0
 
 
