@@ -8,9 +8,25 @@ from .fft_utils import otf2psf, psf2otf
 
 
 def valid_gradients(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Return same-sized valid horizontal/vertical gradient fields."""
+    """Return gradients equivalent to MATLAB conv2(..., dx/dy, 'valid')."""
     arr = np.asarray(image, dtype=np.float32)
-    return arr[:-1, 1:] - arr[:-1, :-1], arr[1:, :-1] - arr[:-1, :-1]
+    # MATLAB conv2 performs convolution (not correlation), so these have the
+    # opposite sign to a forward difference. Both blurred and latent gradients
+    # use the same convention, which is important for parity/debugging.
+    return arr[:-1, :-1] - arr[:-1, 1:], arr[:-1, :-1] - arr[1:, :-1]
+
+
+def _histc_tail(values: np.ndarray, steps: np.ndarray) -> np.ndarray:
+    """Reproduce cumsum(flipud(histc(values, steps))) for non-negative values."""
+    vals = np.asarray(values, dtype=np.float64).ravel()
+    counts = np.zeros(steps.size, dtype=np.int64)
+    if vals.size == 0:
+        return counts
+    indices = np.searchsorted(steps, vals, side="right") - 1
+    valid = (indices >= 0) & (indices < steps.size) & (vals <= steps[-1])
+    if np.any(valid):
+        counts += np.bincount(indices[valid], minlength=steps.size)[: steps.size]
+    return np.cumsum(counts[::-1])
 
 
 def threshold_gradients(
@@ -18,39 +34,38 @@ def threshold_gradients(
     psf_size: int,
     threshold: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, float]:
-    """Select salient gradients using the orientation-balanced CVPR heuristic."""
+    """Faithful port of ``threshold_pxpy_v1.m`` from the MATLAB release."""
     px, py = valid_gradients(latent)
     pm = px * px + py * py
 
     first = threshold is None
     if first:
-        # Gradient orientation modulo pi, matching atan(py/px) in the MATLAB release.
-        angle = np.arctan2(py, px)
-        angle = np.where(angle > np.pi / 2, angle - np.pi, angle)
-        angle = np.where(angle < -np.pi / 2, angle + np.pi, angle)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            pd = np.arctan(py / px)
+        steps = np.arange(0.0, 2.0 + 0.00003, 0.00006, dtype=np.float64)
+        # MATLAB's colon 0:0.00006:2 stops at the last representable step <= 2.
+        steps = steps[steps <= 2.0 + 1e-12]
         bins = (
-            (angle >= 0) & (angle < np.pi / 4),
-            (angle >= np.pi / 4) & (angle <= np.pi / 2),
-            (angle >= -np.pi / 4) & (angle < 0),
-            (angle >= -np.pi / 2) & (angle < -np.pi / 4),
+            (pd >= 0) & (pd < np.pi / 4),
+            (pd >= np.pi / 4) & (pd < np.pi / 2),
+            (pd >= -np.pi / 4) & (pd < 0),
+            (pd >= -np.pi / 2) & (pd < -np.pi / 4),
         )
-        count = max(psf_size * 20, 10)
-        candidates: list[float] = []
-        for mask in bins:
-            vals = pm[mask]
-            if vals.size:
-                k = min(count, vals.size)
-                candidates.append(float(np.partition(vals, vals.size - k)[vals.size - k]))
-        threshold = min(candidates) if candidates else float(np.percentile(pm, 90))
-        if not np.isfinite(threshold) or threshold <= 0:
-            positive = pm[pm > 0]
-            threshold = float(np.median(positive)) if positive.size else 1e-8
+        tails = np.stack([_histc_tail(pm[mask], steps) for mask in bins], axis=0)
+        required = max(int(psf_size) * 20, 10)
+        threshold = 0.0
+        eligible = np.flatnonzero(np.min(tails, axis=0) >= required)
+        if eligible.size:
+            t = int(eligible[0])
+            threshold = float(steps[-1 - t])
 
     assert threshold is not None
     mask = pm < threshold
-    if np.all(mask) and np.any(pm > 0):
-        threshold = min(threshold, float(np.max(pm)) * 0.99)
+    max_pm = float(np.max(pm)) if pm.size else 0.0
+    while np.all(mask) and max_pm > 0.0:
+        threshold *= 0.81
         mask = pm < threshold
+
     px = px.copy()
     py = py.copy()
     px[mask] = 0.0
@@ -83,7 +98,7 @@ def estimate_psf(
     max_iter: int = 20,
     tol: float = 1e-5,
 ) -> np.ndarray:
-    """Estimate a blur PSF with an implicit FFT normal equation + CG."""
+    """Estimate a blur PSF with the release's FFT normal equation + CG solve."""
     lxf = fft.fft2(latent_x, workers=workers)
     lyf = fft.fft2(latent_y, workers=workers)
     bxf = fft.fft2(blurred_x, workers=workers)
@@ -112,9 +127,8 @@ def estimate_psf(
     peak = float(np.max(x))
     if peak > 0:
         x[x < peak * 0.05] = 0.0
-    x[x < 0] = 0.0
     total = float(x.sum())
-    if total <= 1e-12:
+    if abs(total) <= 1e-12:
         x[:] = 0.0
         x[psf_shape[0] // 2, psf_shape[1] // 2] = 1.0
     else:
@@ -165,30 +179,58 @@ def adjust_psf_center(kernel: np.ndarray) -> np.ndarray:
 
 
 def init_kernel(size: int) -> np.ndarray:
+    """Match the intentionally off-centre two-tap initialization in blind_deconv.m."""
     k = np.zeros((size, size), dtype=np.float32)
-    row = size // 2
-    left = max(0, row - 1)
+    row = size // 2 - 1
+    left = size // 2 - 1
     k[row, left : left + 2] = 0.5
     return k
 
 
-def resize_kernel(kernel: np.ndarray, scale: float, target_size: int) -> np.ndarray:
-    new_h = max(1, int(round(kernel.shape[0] * scale)))
-    new_w = max(1, int(round(kernel.shape[1] * scale)))
-    k = cv2.resize(kernel, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
-    k = np.maximum(k, 0.0)
+def _fix_kernel_size(kernel: np.ndarray, rows: int, cols: int) -> np.ndarray:
+    """Port Levin's mass-aware ``fixsize`` helper used by ``resizeKer``."""
+    k = np.asarray(kernel, dtype=np.float32)
+    while k.shape != (rows, cols):
+        h, w = k.shape
+        if h > rows:
+            sums = np.sum(k, axis=1)
+            k = k[1:, :] if sums[0] < sums[-1] else k[:-1, :]
+        elif h < rows:
+            sums = np.sum(k, axis=1)
+            padded = np.zeros((h + 1, w), dtype=k.dtype)
+            if sums[0] < sums[-1]:
+                padded[:h, :] = k
+            else:
+                padded[1:, :] = k
+            k = padded
 
-    # Center crop/pad to requested support; subsequent centroid correction handles drift.
-    out = np.zeros((target_size, target_size), dtype=np.float32)
-    h, w = k.shape
-    src_y0 = max(0, (h - target_size) // 2)
-    src_x0 = max(0, (w - target_size) // 2)
-    dst_y0 = max(0, (target_size - h) // 2)
-    dst_x0 = max(0, (target_size - w) // 2)
-    hh = min(h, target_size)
-    ww = min(w, target_size)
-    out[dst_y0 : dst_y0 + hh, dst_x0 : dst_x0 + ww] = k[src_y0 : src_y0 + hh, src_x0 : src_x0 + ww]
-    total = float(out.sum())
+        h, w = k.shape
+        if w > cols:
+            sums = np.sum(k, axis=0)
+            k = k[:, 1:] if sums[0] < sums[-1] else k[:, :-1]
+        elif w < cols:
+            sums = np.sum(k, axis=0)
+            padded = np.zeros((h, w + 1), dtype=k.dtype)
+            if sums[0] < sums[-1]:
+                padded[:, :w] = k
+            else:
+                padded[:, 1:] = k
+            k = padded
+    return k
+
+
+def resize_kernel(kernel: np.ndarray, scale: float, target_size: int) -> np.ndarray:
+    """Resize a PSF then apply the MATLAB release's mass-aware support correction."""
+    new_h = max(1, int(np.ceil(kernel.shape[0] * scale)))
+    new_w = max(1, int(np.ceil(kernel.shape[1] * scale)))
+    k = cv2.resize(
+        np.asarray(kernel, dtype=np.float32),
+        (new_w, new_h),
+        interpolation=cv2.INTER_CUBIC,
+    )
+    k = np.maximum(k, 0.0)
+    k = _fix_kernel_size(k, target_size, target_size)
+    total = float(k.sum())
     if total > 0:
-        out /= total
-    return out
+        k /= total
+    return k.astype(np.float32)
