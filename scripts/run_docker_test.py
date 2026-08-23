@@ -10,6 +10,16 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_IMAGES = 23
 SUPPORTED = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 METHODS = {"baseline", "annealed_pnp", "extreme_channel"}
+SATURATED_CASES = {
+    "26.png",
+    "IMG_0650_small_patch.png",
+    "IMG_0664_small_patch.png",
+    "IMG_4548_small.png",
+    "IMG_4561.JPG",
+    "blurry_2_small.png",
+    "blurry_7.png",
+    "my_test_car6.png",
+}
 
 
 def source_images() -> list[Path]:
@@ -67,6 +77,9 @@ def validate_report(report: dict) -> None:
                 f"estimated kernel shape does not match profile for {case.get('name')}: "
                 f"{case.get('kernel_shape')} != {[kernel_size, kernel_size]}"
             )
+        expected_saturated = case.get("name") in SATURATED_CASES
+        if bool(profile.get("saturated", False)) is not expected_saturated:
+            raise RuntimeError(f"incorrect MATLAB saturation mode for {case.get('name')}")
 
         case_dir = ROOT / "results" / case["result_dir"]
         required = {
@@ -92,7 +105,7 @@ def validate_report(report: dict) -> None:
 
 
 def main() -> int:
-    print("[1/4] Validating dataset and explicit benchmark profiles", flush=True)
+    print("[1/4] Validating dataset and MATLAB-equivalent benchmark profiles", flush=True)
     images = source_images()
     if len(images) != EXPECTED_IMAGES:
         raise RuntimeError(
@@ -101,8 +114,13 @@ def main() -> int:
     profiles = json.loads((ROOT / "dataset" / "benchmark_profiles.json").read_text(encoding="utf-8"))
     if set(profiles) != {path.name for path in images}:
         raise RuntimeError("benchmark_profiles.json must define exactly one profile for every source image")
+    configured_saturated = {name for name, profile in profiles.items() if profile.get("saturated")}
+    if configured_saturated != SATURATED_CASES:
+        raise RuntimeError(
+            "benchmark saturation modes do not match the original MATLAB demo configuration"
+        )
 
-    print("[2/4] Running Python unit and regression tests", flush=True)
+    print("[2/4] Running Python unit and MATLAB-parity regression tests", flush=True)
     subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "tests"],
         cwd=ROOT,
@@ -110,16 +128,16 @@ def main() -> int:
     )
 
     print(
-        "[3/4] Running 23 full-quality native-resolution images × 3 methods; no resizing is permitted",
+        "[3/4] Running 23 MATLAB-parity native-resolution images × 3 methods; no resizing is permitted",
         flush=True,
     )
     subprocess.run(
-        [sys.executable, "scripts/generate_report.py"],
+        [sys.executable, "scripts/generate_matlab_parity_report.py"],
         cwd=ROOT,
         check=True,
     )
 
-    print("[4/4] Verifying report contract, dimensions, PSFs, and generated files", flush=True)
+    print("[4/4] Verifying report contract, dimensions, PSFs, modes, and generated files", flush=True)
     report_json = ROOT / "results" / "report.json"
     required_reports = [
         ROOT / "results" / "report.html",
@@ -140,7 +158,7 @@ def main() -> int:
         f"{EXPECTED_IMAGES * len(METHODS)} restorations, "
         f"{EXPECTED_IMAGES} independently estimated PSFs, "
         f"{legacy.get('exact_shape_results', 0)} legacy outputs compared. "
-        "Open results/report.html for the complete comparison.",
+        "Open results/report.html for the complete MATLAB-parity comparison.",
         flush=True,
     )
     return 0
