@@ -21,22 +21,56 @@ from .kernel import (
 from .optimization import l0_deblur_dark_channel, l0_restoration, ringing_artifacts_removal
 from .quality import restoration_score, should_retry_kernel
 from .refinement import reblur_image
+from .saturation import whyte_deconvolution
+
+
+def _matlab_rgb2gray(image: np.ndarray) -> np.ndarray:
+    """Match the coefficients used by MATLAB rgb2gray for floating RGB data."""
+    arr = np.asarray(image, dtype=np.float32)
+    return (
+        arr[..., 0] * np.float32(0.298936021293775)
+        + arr[..., 1] * np.float32(0.587043074451121)
+        + arr[..., 2] * np.float32(0.114020904255103)
+    ).astype(np.float32)
 
 
 def _downsample(image: np.ndarray, ratio: float) -> np.ndarray:
+    """Faithful translation of the release's Levin ``downSmpImC`` routine."""
+    arr = np.asarray(image, dtype=np.float32)
     if ratio == 1.0:
-        return image.copy()
-    sigma = max(0.01, 1.0 / math.pi * ratio)
-    blurred = cv2.GaussianBlur(
-        image,
-        (0, 0),
-        sigmaX=sigma,
-        sigmaY=sigma,
-        borderType=cv2.BORDER_REPLICATE,
+        return arr.copy()
+
+    sigma = ratio / math.pi
+    grid = np.arange(-50, 51, dtype=np.float64) * (2.0 * math.pi)
+    kernel = np.exp(-0.5 * grid * grid * sigma * sigma)
+    kernel /= kernel.sum()
+    cumulative = np.cumsum(kernel)
+    cumulative = np.minimum(cumulative, cumulative[::-1])
+    kernel = kernel[cumulative > 0.05].astype(np.float32)
+
+    # The MATLAB code uses conv2(...,'valid') before bilinear interp2 sampling.
+    filtered = cv2.sepFilter2D(
+        arr,
+        cv2.CV_32F,
+        kernel,
+        kernel,
+        borderType=cv2.BORDER_CONSTANT,
     )
-    h = max(2, int(round(image.shape[0] * ratio)))
-    w = max(2, int(round(image.shape[1] * ratio)))
-    return cv2.resize(blurred, (w, h), interpolation=cv2.INTER_AREA)
+    radius = kernel.size // 2
+    if radius:
+        filtered = filtered[radius:-radius, radius:-radius]
+
+    step = 1.0 / ratio
+    xs = np.arange(0.0, filtered.shape[1], step, dtype=np.float32)
+    ys = np.arange(0.0, filtered.shape[0], step, dtype=np.float32)
+    map_x, map_y = np.meshgrid(xs, ys)
+    return cv2.remap(
+        filtered,
+        map_x,
+        map_y,
+        interpolation=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+    ).astype(np.float32)
 
 
 def estimate_blur_kernel(
@@ -50,7 +84,7 @@ def estimate_blur_kernel(
     if y.ndim != 2:
         raise ValueError("estimate_blur_kernel expects a 2-D grayscale image")
     if cfg.prescale != 1.0:
-        y = cv2.resize(y, None, fx=cfg.prescale, fy=cfg.prescale, interpolation=cv2.INTER_AREA)
+        y = cv2.resize(y, None, fx=cfg.prescale, fy=cfg.prescale, interpolation=cv2.INTER_CUBIC)
     if cfg.gamma_correct != 1.0:
         y = np.power(np.clip(y, 0.0, 1.0), cfg.gamma_correct, dtype=np.float32)
 
@@ -131,7 +165,17 @@ def _restore_and_score(
     kernel: np.ndarray,
     config: DeblurConfig,
 ) -> tuple[np.ndarray, float, str]:
-    """Run extra restoration candidates only when the configured one is suspicious."""
+    """Run the original final restoration, with optional robust alternatives."""
+    if config.saturated:
+        restored = whyte_deconvolution(
+            image,
+            kernel,
+            iterations=config.saturation_iterations,
+            workers=config.fft_workers,
+        )
+        score, _ = _candidate_score(image, kernel, restored, config)
+        return restored.astype(np.float32), float(score), "whyte_saturation"
+
     configured = ringing_artifacts_removal(image, kernel, config)
     best_image = configured
     best_score, diag = _candidate_score(image, kernel, configured, config)
@@ -187,17 +231,12 @@ def deblur_image(
     image: np.ndarray,
     config: DeblurConfig | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Blind-deblur an RGB/gray float image and return result, kernel, interim latent.
-
-    Robust mode first estimates the configured PSF, conditionally selects a more
-    conservative final restoration, and retries suspicious PSFs with a gradient-only
-    estimator. Legacy/reference pixels are never used by inference or selection.
-    """
+    """Blind-deblur an RGB/gray float image and return result, kernel, interim latent."""
     cfg = config or DeblurConfig()
     cfg.validate()
     arr = np.asarray(image, dtype=np.float32)
     if arr.ndim == 3:
-        gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+        gray = _matlab_rgb2gray(arr)
     elif arr.ndim == 2:
         gray = arr
     else:
