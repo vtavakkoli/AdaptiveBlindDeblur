@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dark-channel-deblur"
-version = "0.1.0"
-description = "Fast Python implementation of blind image deblurring with the dark channel prior (Pan et al., CVPR 2016)."
+version = "0.2.0"
+description = "Fast Python blind deblurring with dark-channel baseline, annealed PnP, and extreme-channel research refinements."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
