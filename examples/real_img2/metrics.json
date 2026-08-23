@@ -1,0 +1,59 @@
+{
+  "reference": "Authors' saved MATLAB output from CVPR 2016 release (not ground truth)",
+  "parameters": {
+    "kernel_size": 25,
+    "lambda_dark": 0.004,
+    "lambda_grad": 0.004,
+    "gamma_correct": 1.0,
+    "lambda_tv": 0.003,
+    "lambda_l0": 0.0005,
+    "weight_ring": 1.0,
+    "xk_iter": 5
+  },
+  "python_runtime_seconds": {
+    "full": 22.23,
+    "fast": 6.4
+  },
+  "agreement_with_matlab_reference": {
+    "python_full": {
+      "psnr_db": 31.49440590769522,
+      "ssim": 0.9554783769716165
+    },
+    "python_fast": {
+      "psnr_db": 34.7961209429914,
+      "ssim": 0.9756397085909961
+    },
+    "blurred_input": {
+      "psnr_db": 25.02559017837875,
+      "ssim": 0.7797220376926363
+    }
+  },
+  "sharpness": {
+    "blurred_input": {
+      "laplacian_variance": 0.0002388447474577646,
+      "mean_gradient_magnitude": 0.0805531676133961
+    },
+    "matlab_reference": {
+      "laplacian_variance": 0.0020555497443224295,
+      "mean_gradient_magnitude": 0.12355158550229225
+    },
+    "python_full": {
+      "laplacian_variance": 0.004582071472869343,
+      "mean_gradient_magnitude": 0.12439799786693344
+    },
+    "python_fast": {
+      "laplacian_variance": 0.004019802553567174,
+      "mean_gradient_magnitude": 0.1210512284499144
+    }
+  },
+  "kernel_agreement_with_matlab_reference": {
+    "python_full": {
+      "correlation": 0.8804542498975679,
+      "l1_distance": 0.464849585682786
+    },
+    "python_fast": {
+      "correlation": 0.9524058851568833,
+      "l1_distance": 0.3495063578332043
+    }
+  }
+}
