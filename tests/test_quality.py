@@ -70,6 +70,16 @@ def test_long_kernel_ripple_risk_catches_toy_like_failure() -> None:
     assert ripple_risk(diag, kernel_size=101)
 
 
+def test_long_kernel_ripple_risk_catches_severe_unclipped_texture() -> None:
+    diag = ArtifactDiagnostics(
+        edge_ratio=2.80,
+        noise_ratio=2.90,
+        highpass_ratio=4.30,
+        clipping_growth=0.0,
+    )
+    assert ripple_risk(diag, kernel_size=65)
+
+
 def test_clean_long_motion_is_not_misclassified_as_ripple() -> None:
     # Regression shape modeled on the clean 7_patch_use result: strong useful detail,
     # very low noise, and only modest clipping growth must not trigger a PSF retry.
@@ -80,6 +90,18 @@ def test_clean_long_motion_is_not_misclassified_as_ripple() -> None:
         clipping_growth=0.010,
     )
     assert not ripple_risk(diag, kernel_size=85)
+
+
+def test_sharp_but_clean_long_kernel_result_is_preserved() -> None:
+    # High edge/high-pass energy alone is not enough: a clean postcard-like output
+    # can be legitimately sharp and should survive when noise/clipping stay controlled.
+    diag = ArtifactDiagnostics(
+        edge_ratio=3.52,
+        noise_ratio=1.47,
+        highpass_ratio=5.01,
+        clipping_growth=0.009,
+    )
+    assert not ripple_risk(diag, kernel_size=115)
 
 
 def test_saturated_instability_requires_joint_edge_and_noise_growth() -> None:
