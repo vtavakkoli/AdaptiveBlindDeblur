@@ -3,73 +3,133 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="light" />
 <title>Adaptive Blind Deblur · Browser Lab</title>
 <style>
-:root{--bg:#07111f;--panel:#0e1b2d;--panel2:#12243a;--line:#223c59;--text:#eef6ff;--muted:#9cb2c9;--brand:#72a7ff;--brand2:#8de3c4;--warn:#ffc66d;--danger:#ff7f8d;--shadow:0 18px 60px rgba(0,0,0,.32)}
-*{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:radial-gradient(circle at 15% 0%,#13345c 0,transparent 33%),radial-gradient(circle at 90% 10%,#123b36 0,transparent 28%),var(--bg);color:var(--text);min-height:100vh}
-button,input,select{font:inherit}.shell{max-width:1540px;margin:0 auto;padding:28px}.hero{display:flex;gap:24px;align-items:flex-end;justify-content:space-between;margin-bottom:20px}.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--brand2);font-weight:800}.hero h1{font-size:clamp(30px,5vw,56px);line-height:1;margin:8px 0 10px;letter-spacing:-.045em}.hero p{max-width:760px;color:var(--muted);font-size:16px;line-height:1.6;margin:0}.pill{border:1px solid var(--line);padding:9px 12px;border-radius:999px;color:var(--muted);background:rgba(7,17,31,.5);white-space:nowrap}.grid{display:grid;grid-template-columns:360px minmax(0,1fr);gap:18px}.panel{background:linear-gradient(180deg,rgba(18,36,58,.96),rgba(11,25,42,.96));border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow)}.controls{padding:18px;position:sticky;top:18px;align-self:start}.section{padding:16px 0;border-top:1px solid var(--line)}.section:first-child{padding-top:0;border-top:0}.section h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#cfe0f5;margin:0 0 12px}.drop{border:1.5px dashed #416485;border-radius:18px;padding:20px;text-align:center;background:rgba(114,167,255,.05);cursor:pointer;transition:.2s}.drop:hover,.drop.drag{border-color:var(--brand);background:rgba(114,167,255,.1)}.drop strong{display:block;margin-bottom:5px}.drop small{color:var(--muted)}.drop input{display:none}.row{display:grid;grid-template-columns:1fr 110px;gap:12px;align-items:center;margin:12px 0}.row label{font-size:13px;color:#d7e5f4}.row output,.value{font-variant-numeric:tabular-nums;color:var(--brand2);text-align:right}.row input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--brand)}select,input[type=number]{width:100%;background:#0a1728;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px}.check{display:flex;align-items:center;gap:9px;color:#d7e5f4;font-size:13px;margin:10px 0}.check input{accent-color:var(--brand)}.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.btn{border:0;border-radius:12px;padding:11px 14px;font-weight:800;cursor:pointer;transition:transform .15s,opacity .15s}.btn:hover{transform:translateY(-1px)}.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}.primary{background:linear-gradient(135deg,var(--brand),#9c8cff);color:#06101e}.secondary{background:#162b43;color:#e5f0ff;border:1px solid #294867}.ghost{background:transparent;color:#cfe1f5;border:1px solid var(--line)}.status{margin-top:12px;border-radius:12px;padding:10px 12px;background:#0a1728;border:1px solid var(--line);color:var(--muted);font-size:12px;line-height:1.5}.progress{height:5px;background:#07111f;border-radius:999px;overflow:hidden;margin-top:8px}.progress>span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--brand),var(--brand2));transition:width .2s}.workspace{padding:18px}.topbar{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:14px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:10px}.metric{background:#0a1728;border:1px solid var(--line);border-radius:14px;padding:11px}.metric span{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}.metric strong{display:block;font-size:19px;margin-top:4px;font-variant-numeric:tabular-nums}.viewer{position:relative;aspect-ratio:16/10;min-height:420px;overflow:hidden;border-radius:18px;background:repeating-conic-gradient(#101b2a 0 25%,#0d1724 0 50%) 50%/24px 24px;border:1px solid var(--line)}.viewer img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;user-select:none}.viewer .result{clip-path:inset(0 50% 0 0)}.split-line{position:absolute;top:0;bottom:0;left:50%;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.5);pointer-events:none}.split-knob{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:42px;height:42px;border-radius:50%;background:white;color:#0b1828;display:grid;place-items:center;font-weight:900;pointer-events:none;box-shadow:0 8px 25px rgba(0,0,0,.4)}.split{position:absolute;left:0;right:0;bottom:12px;width:min(620px,80%);margin:auto;z-index:4;accent-color:white}.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);padding:40px}.lower{display:grid;grid-template-columns:260px 1fr;gap:14px;margin-top:14px}.kernel-card,.note{background:#0a1728;border:1px solid var(--line);border-radius:16px;padding:14px}.kernel-card canvas{width:100%;aspect-ratio:1;background:#000;border-radius:12px;image-rendering:pixelated}.kernel-card h4,.note h4{margin:0 0 10px}.kernel-meta{font-size:12px;color:var(--muted);line-height:1.55}.note{line-height:1.65;color:#c5d6e8;font-size:13px}.note strong{color:white}.footer{color:#7890a8;font-size:12px;margin-top:18px;line-height:1.6}.tag{display:inline-block;padding:4px 7px;border-radius:7px;background:rgba(141,227,196,.1);color:var(--brand2);font-size:11px;font-weight:800;margin-right:5px}.hidden{display:none!important}@media(max-width:980px){.grid{grid-template-columns:1fr}.controls{position:static}.metrics{grid-template-columns:1fr 1fr}.viewer{min-height:340px}.lower{grid-template-columns:1fr}.hero{align-items:flex-start;flex-direction:column}}@media(max-width:580px){.shell{padding:14px}.metrics{grid-template-columns:1fr 1fr}.actions{grid-template-columns:1fr}.viewer{min-height:280px}}
+:root{
+  --bg:#f6f8fc;--surface:#ffffff;--surface-soft:#f9fbff;--border:#e3e8f2;
+  --text:#172033;--muted:#66748c;--blue:#2563eb;--blue2:#4f7cf3;--blue-soft:#eef4ff;
+  --green:#0f9f6e;--green-soft:#ecfdf5;--amber:#b7791f;--shadow:0 16px 40px rgba(35,55,85,.08);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:linear-gradient(180deg,#fff 0,#f7f9fc 340px,#f6f8fc 100%);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}
+button,input,select{font:inherit}
+button{appearance:none}
+.app{max-width:1480px;margin:0 auto;padding:28px 28px 48px}
+.header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px}
+.brandline{display:flex;align-items:center;gap:12px;margin-bottom:12px}.logo{width:42px;height:42px;border-radius:13px;background:linear-gradient(135deg,#2563eb,#78a4ff);display:grid;place-items:center;color:#fff;box-shadow:0 10px 24px rgba(37,99,235,.22)}.logo svg{width:23px;height:23px}
+.kicker{font-size:12px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--blue)}
+h1{font-size:clamp(34px,4.6vw,58px);line-height:1.02;margin:0;letter-spacing:-.045em;max-width:880px}.accent{color:var(--blue)}
+.lead{font-size:16px;line-height:1.7;color:var(--muted);max-width:870px;margin:14px 0 0}
+.header-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.badge{display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:999px;border:1px solid var(--border);background:#fff;color:var(--muted);font-size:12px;font-weight:700;white-space:nowrap}.dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px var(--green-soft)}
+.layout{display:grid;grid-template-columns:360px minmax(0,1fr);gap:20px;align-items:start}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:22px;box-shadow:var(--shadow)}
+.controls{padding:18px;position:sticky;top:18px}.section{padding:16px 0;border-top:1px solid var(--border)}.section:first-child{padding-top:0;border-top:0}.section-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}.section h3{margin:0;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:#44526a}.help{font-size:11px;color:#8b98aa}
+.drop{display:block;border:1.5px dashed #b6c6df;border-radius:17px;padding:20px;text-align:center;background:linear-gradient(180deg,#fbfdff,#f6f9ff);cursor:pointer;transition:.2s}.drop:hover,.drop.drag{border-color:var(--blue);background:var(--blue-soft);transform:translateY(-1px)}.drop-icon{width:44px;height:44px;margin:0 auto 10px;border-radius:14px;background:#fff;border:1px solid var(--border);display:grid;place-items:center;color:var(--blue);box-shadow:0 8px 20px rgba(37,99,235,.08)}.drop strong{display:block;font-size:14px}.drop small{display:block;color:var(--muted);margin-top:5px;line-height:1.5}.drop input{display:none}
+.field{margin:13px 0}.field-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}.field label{font-size:13px;font-weight:650;color:#39465c}.value{font-size:12px;font-weight:750;color:var(--blue);font-variant-numeric:tabular-nums;background:var(--blue-soft);padding:3px 7px;border-radius:7px}
+select{width:100%;border:1px solid #d9e0eb;background:#fff;color:var(--text);padding:10px 11px;border-radius:10px;outline:none}select:focus{border-color:#8aafff;box-shadow:0 0 0 3px #edf3ff}
+input[type=range]{width:100%;accent-color:var(--blue)}
+.check{display:flex;align-items:flex-start;gap:9px;margin:11px 0;font-size:12.5px;color:#45536a;line-height:1.45}.check input{margin-top:2px;accent-color:var(--blue)}
+.btn{border:0;border-radius:11px;padding:10px 13px;font-weight:750;cursor:pointer;transition:.16s;min-height:40px}.btn:hover:not(:disabled){transform:translateY(-1px)}.btn:disabled{opacity:.43;cursor:not-allowed}.primary{background:linear-gradient(135deg,var(--blue),#4d7df0);color:#fff;box-shadow:0 8px 18px rgba(37,99,235,.18)}.secondary{background:#f3f6fb;color:#334158;border:1px solid #dfe6f0}.outline{background:#fff;color:var(--blue);border:1px solid #cbd9f4}.actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}.wide{width:100%}
+.status{margin-top:12px;border:1px solid var(--border);border-radius:12px;padding:11px 12px;background:#fafbfd;color:var(--muted);font-size:12px;line-height:1.5}.progress{height:5px;border-radius:99px;background:#e9eef6;margin-top:9px;overflow:hidden}.progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--blue),#78a4ff);transition:width .2s}
+.workspace{padding:18px}.workspace-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}.tags{display:flex;gap:7px;flex-wrap:wrap}.tag{font-size:10px;font-weight:800;letter-spacing:.06em;padding:5px 7px;border-radius:7px;background:var(--blue-soft);color:var(--blue)}.meta{font-size:12px;color:var(--muted);text-align:right}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:10px;margin-bottom:14px}.metric{border:1px solid var(--border);background:linear-gradient(180deg,#fff,#fbfcff);border-radius:14px;padding:12px}.metric span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#8390a3;font-weight:750}.metric strong{display:block;margin-top:5px;font-size:20px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.viewer{position:relative;min-height:520px;aspect-ratio:16/10;overflow:hidden;border-radius:18px;border:1px solid var(--border);background-color:#f5f7fa;background-image:linear-gradient(45deg,#eef2f6 25%,transparent 25%),linear-gradient(-45deg,#eef2f6 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#eef2f6 75%),linear-gradient(-45deg,transparent 75%,#eef2f6 75%);background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0}.viewer img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;user-select:none}.result{clip-path:inset(0 50% 0 0)}.empty{position:absolute;inset:0;display:grid;place-items:center;padding:40px;text-align:center}.empty-box{max-width:430px}.empty-visual{width:82px;height:82px;border-radius:24px;background:#fff;border:1px solid var(--border);box-shadow:0 16px 35px rgba(40,60,90,.08);margin:0 auto 16px;display:grid;place-items:center;color:var(--blue)}.empty strong{display:block;font-size:19px;margin-bottom:8px}.empty p{margin:0;color:var(--muted);line-height:1.6;font-size:13px}
+.split-line{position:absolute;top:0;bottom:0;left:50%;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(25,36,53,.15);pointer-events:none}.split-knob{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:42px;height:42px;border-radius:50%;background:#fff;border:1px solid #d7deea;color:var(--blue);display:grid;place-items:center;font-size:18px;font-weight:900;box-shadow:0 10px 28px rgba(20,35,60,.18);pointer-events:none}.split{position:absolute;left:10%;right:10%;bottom:13px;width:80%;z-index:4;accent-color:var(--blue)}.label-chip{position:absolute;top:13px;z-index:5;padding:6px 9px;border-radius:8px;font-size:10px;font-weight:800;letter-spacing:.04em;background:rgba(255,255,255,.93);border:1px solid rgba(220,227,238,.95);box-shadow:0 5px 14px rgba(20,35,60,.08)}.before-chip{left:13px}.after-chip{right:13px;color:var(--blue)}
+.lower{display:grid;grid-template-columns:280px 1fr;gap:14px;margin-top:14px}.subcard{border:1px solid var(--border);border-radius:16px;padding:14px;background:#fff}.subcard h4{margin:0 0 10px;font-size:14px}.kernel-wrap{background:#0b0e13;border-radius:13px;padding:8px}.kernel-wrap canvas{display:block;width:100%;aspect-ratio:1;border-radius:8px;image-rendering:pixelated}.kernel-meta{font-size:11.5px;color:var(--muted);line-height:1.55;margin-top:10px}.explain{font-size:13px;line-height:1.72;color:#526078}.explain strong{color:#26344a}.explain p{margin:0 0 10px}.explain p:last-child{margin-bottom:0}.notice{margin-top:12px;padding:10px 12px;border-radius:11px;background:#fffaf0;border:1px solid #f1dfb5;color:#7c5b20;font-size:11.5px;line-height:1.55}.footer{margin-top:15px;color:#8390a3;font-size:11.5px;line-height:1.6}.hidden{display:none!important}
+#errorBanner{display:none;margin:0 0 18px;padding:13px 15px;border-radius:12px;border:1px solid #fecaca;background:#fff1f2;color:#991b1b;font-size:13px;line-height:1.5}
+@media(max-width:1000px){.layout{grid-template-columns:1fr}.controls{position:static}.header{flex-direction:column}.header-actions{justify-content:flex-start}.viewer{min-height:400px}.lower{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.app{padding:18px 14px 34px}.metrics{grid-template-columns:1fr 1fr}.actions{grid-template-columns:1fr}.viewer{min-height:320px}.workspace{padding:12px}.controls{padding:14px}.meta{text-align:left}.workspace-head{align-items:flex-start;flex-direction:column}}
 </style>
 </head>
 <body>
-<div class="shell">
-  <header class="hero">
+<div class="app">
+  <div id="errorBanner"></div>
+  <header class="header">
     <div>
-      <div class="eyebrow">Standalone · no server · no dependencies</div>
-      <h1>Adaptive Blind Deblur <span style="color:var(--brand)">Browser Lab</span></h1>
-      <p>Upload a blurred image, tune a motion PSF, and run a fast reference-free restoration directly in your browser. The playground mirrors the repository's ideas—PSF control, iterative data consistency, regularization, and dark/bright-extrema detail protection—while the Python/Docker pipeline remains the authoritative full-quality implementation.</p>
+      <div class="brandline">
+        <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 16.5 9.2 11l3.3 3.2L20 6.8" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 7.5h4M16 16.5h4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg></div>
+        <div class="kicker">Standalone · browser-only restoration</div>
+      </div>
+      <h1>Adaptive Blind Deblur <span class="accent">Browser Lab</span></h1>
+      <p class="lead">Upload a blurred image, estimate a motion direction, tune the PSF, and experiment with a lightweight reference-free restoration directly in your browser. No image is uploaded anywhere.</p>
     </div>
-    <div class="pill">Everything stays on this device</div>
+    <div class="header-actions">
+      <div class="badge"><span class="dot"></span> Runs locally</div>
+      <div class="badge">No server</div>
+      <div class="badge">No dependencies</div>
+    </div>
   </header>
 
-  <div class="grid">
-    <aside class="panel controls">
+  <div class="layout">
+    <aside class="card controls">
       <section class="section">
-        <label class="drop" id="dropZone" for="fileInput">
+        <label id="dropZone" class="drop" for="fileInput">
+          <div class="drop-icon" aria-hidden="true">↥</div>
           <strong>Drop an image here</strong>
-          <small>or click to choose PNG / JPEG / WebP</small>
+          <small>or click to choose PNG, JPEG, or WebP</small>
           <input id="fileInput" type="file" accept="image/*" />
         </label>
       </section>
 
       <section class="section">
-        <h3>Preset</h3>
-        <div class="row"><label for="preset">Quality profile</label><select id="preset"><option value="balanced">Balanced</option><option value="long">Long motion</option><option value="night">Night / saturated</option><option value="detail">Fine detail</option><option value="manual">Manual</option></select></div>
+        <div class="section-title"><h3>Preset</h3><span class="help">Starting point</span></div>
+        <select id="preset" aria-label="Restoration preset">
+          <option value="balanced">Balanced</option>
+          <option value="long">Long camera motion</option>
+          <option value="night">Night / saturated</option>
+          <option value="detail">Fine detail</option>
+          <option value="manual">Manual</option>
+        </select>
       </section>
 
       <section class="section">
-        <h3>PSF settings</h3>
-        <div class="row"><label for="length">Kernel length</label><output id="lengthOut">21 px</output><input id="length" type="range" min="3" max="71" step="2" value="21" /></div>
-        <div class="row"><label for="angle">Kernel angle</label><output id="angleOut">0°</output><input id="angle" type="range" min="-90" max="90" step="1" value="0" /></div>
-        <button class="btn secondary" id="estimateBtn" style="width:100%">Estimate angle from gradients</button>
+        <div class="section-title"><h3>Motion PSF</h3><span class="help">Blur model</span></div>
+        <div class="field"><div class="field-head"><label for="kernelLength">Kernel length</label><span class="value" id="kernelLengthOut">21 px</span></div><input id="kernelLength" type="range" min="3" max="71" step="2" value="21" /></div>
+        <div class="field"><div class="field-head"><label for="kernelAngle">Kernel angle</label><span class="value" id="kernelAngleOut">0°</span></div><input id="kernelAngle" type="range" min="-90" max="90" step="1" value="0" /></div>
+        <button id="estimateBtn" class="btn outline wide">Estimate angle from image</button>
       </section>
 
       <section class="section">
-        <h3>Restoration</h3>
-        <div class="row"><label for="iterations">Iterations</label><output id="iterationsOut">8</output><input id="iterations" type="range" min="1" max="20" step="1" value="8" /></div>
-        <div class="row"><label for="step">Data step</label><output id="stepOut">0.70</output><input id="step" type="range" min="0.15" max="1.0" step="0.05" value="0.70" /></div>
-        <div class="row"><label for="regularization">Smoothness</label><output id="regOut">0.025</output><input id="regularization" type="range" min="0" max="0.12" step="0.005" value="0.025" /></div>
-        <div class="row"><label for="detail">Extrema detail</label><output id="detailOut">0.18</output><input id="detail" type="range" min="0" max="0.50" step="0.02" value="0.18" /></div>
-        <label class="check"><input id="extrema" type="checkbox" checked /> Dark/bright-extrema protection</label>
-        <label class="check"><input id="autoGuard" type="checkbox" checked /> Artifact-safe update guard</label>
+        <div class="section-title"><h3>Restoration</h3><span class="help">Interactive approximation</span></div>
+        <div class="field"><div class="field-head"><label for="iterations">Iterations</label><span class="value" id="iterationsOut">8</span></div><input id="iterations" type="range" min="1" max="20" step="1" value="8" /></div>
+        <div class="field"><div class="field-head"><label for="dataStep">Data step</label><span class="value" id="dataStepOut">0.65</span></div><input id="dataStep" type="range" min="0.15" max="0.95" step="0.05" value="0.65" /></div>
+        <div class="field"><div class="field-head"><label for="smoothness">Smoothness</label><span class="value" id="smoothnessOut">0.030</span></div><input id="smoothness" type="range" min="0" max="0.12" step="0.005" value="0.030" /></div>
+        <div class="field"><div class="field-head"><label for="detailStrength">Extrema detail</label><span class="value" id="detailStrengthOut">0.12</span></div><input id="detailStrength" type="range" min="0" max="0.40" step="0.02" value="0.12" /></div>
+        <label class="check"><input id="extremaGuard" type="checkbox" checked /> Protect strong dark/bright extrema while restoring detail.</label>
+        <label class="check"><input id="artifactGuard" type="checkbox" checked /> Attenuate updates when edge/noise growth becomes excessive.</label>
       </section>
 
       <section class="section">
-        <h3>Working size</h3>
-        <div class="row"><label for="maxDim">Maximum dimension</label><select id="maxDim"><option value="384">384 px</option><option value="512" selected>512 px</option><option value="768">768 px</option><option value="1024">1024 px</option><option value="0">Original size</option></select></div>
-        <div class="status">For interactive speed, 512 px is recommended. Choose <strong>Original size</strong> for smaller images or when you are willing to wait. The repository benchmark never resizes inputs.</div>
+        <div class="section-title"><h3>Working size</h3><span class="help">Speed vs detail</span></div>
+        <select id="maxDimension" aria-label="Maximum working dimension">
+          <option value="384">384 px · fastest</option>
+          <option value="512" selected>512 px · recommended</option>
+          <option value="768">768 px · detailed</option>
+          <option value="1024">1024 px · slower</option>
+          <option value="0">Original size</option>
+        </select>
+        <div class="notice">The research benchmark never resizes inputs. This browser lab defaults to a smaller working size only to stay responsive.</div>
       </section>
 
       <section class="section">
-        <div class="actions"><button class="btn primary" id="runBtn" disabled>Run deblur</button><button class="btn ghost" id="resetBtn" disabled>Reset</button><button class="btn secondary" id="downloadBtn" disabled>Export PNG</button><button class="btn ghost" id="swapBtn" disabled>Show result</button></div>
-        <div class="status" id="status">Upload an image to begin.<div class="progress"><span id="progressBar"></span></div></div>
+        <div class="actions">
+          <button id="runBtn" class="btn primary" disabled>Run deblur</button>
+          <button id="resetBtn" class="btn secondary" disabled>Reset</button>
+          <button id="downloadBtn" class="btn outline" disabled>Export PNG</button>
+          <button id="showBtn" class="btn secondary" disabled>Show result</button>
+        </div>
+        <div id="status" class="status">Upload an image to begin.<div class="progress"><span id="progressBar"></span></div></div>
       </section>
     </aside>
 
-    <main class="panel workspace">
-      <div class="topbar">
-        <div><span class="tag">INTERACTIVE</span><span class="tag">REFERENCE-FREE</span></div>
-        <div style="color:var(--muted);font-size:12px" id="imageMeta">No image loaded</div>
+    <main class="card workspace">
+      <div class="workspace-head">
+        <div class="tags"><span class="tag">INTERACTIVE</span><span class="tag">REFERENCE-FREE</span><span class="tag">LOCAL</span></div>
+        <div id="imageMeta" class="meta">No image loaded</div>
       </div>
+
       <div class="metrics">
         <div class="metric"><span>Runtime</span><strong id="runtimeMetric">—</strong></div>
         <div class="metric"><span>Edge gain</span><strong id="edgeMetric">—</strong></div>
@@ -77,62 +137,276 @@ button,input,select{font:inherit}.shell{max-width:1540px;margin:0 auto;padding:2
         <div class="metric"><span>Working size</span><strong id="sizeMetric">—</strong></div>
       </div>
 
-      <div class="viewer" id="viewer" style="margin-top:14px">
-        <div class="empty" id="emptyState"><div><strong style="font-size:20px;color:white">Your before/after view appears here</strong><br><br>Upload an image, adjust the PSF, then run the restoration.</div></div>
-        <img id="sourceImg" alt="Observed source" class="hidden" />
-        <img id="resultImg" alt="Deblurred result" class="result hidden" />
-        <div class="split-line hidden" id="splitLine"></div><div class="split-knob hidden" id="splitKnob">↔</div>
-        <input class="split hidden" id="split" type="range" min="0" max="100" value="50" aria-label="Before after comparison" />
+      <div id="viewer" class="viewer">
+        <div id="emptyState" class="empty"><div class="empty-box"><div class="empty-visual">◫</div><strong>Your before/after view appears here</strong><p>Upload an image, estimate or tune the motion PSF, then run the restoration. Drag the comparison slider to inspect the result.</p></div></div>
+        <img id="sourceImg" class="hidden" alt="Observed source" />
+        <img id="resultImg" class="result hidden" alt="Deblurred result" />
+        <div id="beforeChip" class="label-chip before-chip hidden">BEFORE</div>
+        <div id="afterChip" class="label-chip after-chip hidden">AFTER</div>
+        <div id="splitLine" class="split-line hidden"></div>
+        <div id="splitKnob" class="split-knob hidden">↔</div>
+        <input id="splitSlider" class="split hidden" type="range" min="0" max="100" value="50" aria-label="Before and after comparison" />
       </div>
 
       <div class="lower">
-        <div class="kernel-card"><h4>PSF preview</h4><canvas id="kernelCanvas" width="260" height="260"></canvas><div class="kernel-meta" id="kernelMeta">No kernel yet.</div></div>
-        <div class="note">
-          <h4>How this browser version works</h4>
-          <p><strong>1.</strong> A motion-line PSF is created from the selected length and angle. <strong>2.</strong> A regularized iterative inverse step alternates forward blur, residual back-projection, and smoothness control. <strong>3.</strong> Optional dark/bright-extrema guidance restores local contrast only where the image contains strong evidence. <strong>4.</strong> An artifact guard attenuates updates that create too much clipping or high-frequency growth.</p>
-          <p>This single HTML file is intentionally lightweight and dependency-free. It is an <strong>interactive approximation</strong>, not a browser port of the full multi-scale Python blind-kernel solver. For reproducible research results, use <code>docker compose run --rm test</code> or the Python CLI.</p>
+        <div class="subcard">
+          <h4>PSF preview</h4>
+          <div class="kernel-wrap"><canvas id="kernelCanvas" width="260" height="260"></canvas></div>
+          <div id="kernelMeta" class="kernel-meta">Choose or estimate a blur direction to inspect the motion kernel.</div>
+        </div>
+        <div class="subcard explain">
+          <h4>What the browser lab does</h4>
+          <p><strong>1.</strong> Builds a motion-line PSF from the selected length and angle. <strong>2.</strong> Alternates forward blur, measurement residual, and back-projection. <strong>3.</strong> Applies smoothness and optional extrema-aware detail control. <strong>4.</strong> Uses an artifact guard to reduce unstable updates.</p>
+          <p>The browser tool is intentionally lightweight and dependency-free. It is <strong>not</strong> a JavaScript reproduction of the repository's full multi-scale Python blind-PSF solver. For authoritative experiments use <code>docker compose run --rm test</code>.</p>
         </div>
       </div>
-      <div class="footer">Tip: for long camera shake, first use <strong>Estimate angle</strong>, then increase kernel length until duplicated edges begin to converge. If halos appear, increase smoothness or lower the data step. All processing is local to the browser.</div>
+      <div class="footer">Tip: if you see halos, lower the data step or increase smoothness. For long motion blur, estimate the angle first and then tune kernel length. Processing stays entirely on your device.</div>
     </main>
   </div>
 </div>
 
 <canvas id="workCanvas" class="hidden"></canvas>
+<canvas id="outputCanvas" class="hidden"></canvas>
 <script>
 'use strict';
-const $=id=>document.getElementById(id);
-const els={file:$('fileInput'),drop:$('dropZone'),source:$('sourceImg'),result:$('resultImg'),viewer:$('viewer'),empty:$('emptyState'),split:$('split'),splitLine:$('splitLine'),splitKnob:$('splitKnob'),run:$('runBtn'),reset:$('resetBtn'),download:$('downloadBtn'),swap:$('swapBtn'),status:$('status'),progress:$('progressBar'),meta:$('imageMeta'),runtime:$('runtimeMetric'),edge:$('edgeMetric'),residual:$('residualMetric'),size:$('sizeMetric'),kernel:$('kernelCanvas'),kernelMeta:$('kernelMeta'),canvas:$('workCanvas')};
-let originalBitmap=null, originalURL='', resultURL='', resultImageData=null, lastKernel=null;
-const controls=['length','angle','iterations','step','regularization','detail'];
-function syncOutputs(){ $('lengthOut').textContent=$('length').value+' px'; $('angleOut').textContent=$('angle').value+'°'; $('iterationsOut').textContent=$('iterations').value; $('stepOut').textContent=(+$('step').value).toFixed(2); $('regOut').textContent=(+$('regularization').value).toFixed(3); $('detailOut').textContent=(+$('detail').value).toFixed(2); }
-controls.forEach(id=>$(id).addEventListener('input',()=>{syncOutputs();$('preset').value='manual';drawKernel();})); syncOutputs();
-const presets={balanced:{length:21,angle:0,iterations:8,step:.70,regularization:.025,detail:.18,extrema:true},long:{length:45,angle:0,iterations:10,step:.62,regularization:.04,detail:.12,extrema:true},night:{length:25,angle:0,iterations:6,step:.50,regularization:.055,detail:.08,extrema:false},detail:{length:15,angle:0,iterations:9,step:.72,regularization:.018,detail:.24,extrema:true}};
-$('preset').addEventListener('change',()=>{const p=presets[$('preset').value];if(!p)return;Object.entries(p).forEach(([k,v])=>{if($(k))$(k).type==='checkbox'?$(k).checked=v:$(k).value=v});syncOutputs();drawKernel();});
-function reflect(i,n){if(n<=1)return 0;while(i<0||i>=n){if(i<0)i=-i-1;if(i>=n)i=2*n-i-1;}return i;}
-function makeKernel(length,angleDeg){const a=angleDeg*Math.PI/180, half=(length-1)/2, seen=new Map();for(let t=-half;t<=half;t++){const dx=Math.round(Math.cos(a)*t),dy=Math.round(Math.sin(a)*t),key=dx+','+dy;seen.set(key,(seen.get(key)||0)+1);}const arr=[...seen.entries()].map(([key,w])=>{const [dx,dy]=key.split(',').map(Number);return{dx,dy,w}});const total=arr.reduce((s,p)=>s+p.w,0);arr.forEach(p=>p.w/=total);return arr;}
-function drawKernel(){const c=els.kernel,ctx=c.getContext('2d'),len=+$('length').value,ang=+$('angle').value,k=makeKernel(len,ang);lastKernel=k;ctx.fillStyle='#000';ctx.fillRect(0,0,c.width,c.height);const scale=Math.min(c.width,c.height)/(len+8),cx=c.width/2,cy=c.height/2;ctx.lineCap='round';k.forEach(p=>{const v=Math.max(.15,p.w*Math.max(8,len));ctx.fillStyle=`rgba(255,255,255,${Math.min(1,v)})`;ctx.beginPath();ctx.arc(cx+p.dx*scale,cy+p.dy*scale,Math.max(1.5,scale*.7),0,Math.PI*2);ctx.fill()});els.kernelMeta.textContent=`${len} px · ${ang}° · ${k.length} discrete PSF samples`;}
-drawKernel();
-function setStatus(msg,pct=0){els.status.childNodes[0].nodeValue=msg;els.progress.style.width=Math.max(0,Math.min(100,pct))+'%';}
-async function loadFile(file){if(!file||!file.type.startsWith('image/'))return;try{originalBitmap=await createImageBitmap(file);if(originalURL)URL.revokeObjectURL(originalURL);originalURL=URL.createObjectURL(file);els.source.src=originalURL;els.source.classList.remove('hidden');els.empty.classList.add('hidden');els.result.classList.add('hidden');[els.split,els.splitLine,els.splitKnob].forEach(x=>x.classList.add('hidden'));els.run.disabled=false;els.reset.disabled=false;els.download.disabled=true;els.swap.disabled=true;els.meta.textContent=`${file.name} · ${originalBitmap.width}×${originalBitmap.height}`;els.runtime.textContent='—';els.edge.textContent='—';els.residual.textContent='—';els.size.textContent='—';setStatus('Image loaded. Adjust settings or estimate the angle.',0);}catch(e){setStatus('Could not decode this image: '+e.message,0)}}
-els.file.addEventListener('change',e=>loadFile(e.target.files[0]));['dragenter','dragover'].forEach(ev=>els.drop.addEventListener(ev,e=>{e.preventDefault();els.drop.classList.add('drag')}));['dragleave','drop'].forEach(ev=>els.drop.addEventListener(ev,e=>{e.preventDefault();els.drop.classList.remove('drag')}));els.drop.addEventListener('drop',e=>loadFile(e.dataTransfer.files[0]));
-function imageDataToFloat(img){const d=img.data,out=new Float32Array(d.length/4*3);for(let i=0,j=0;i<d.length;i+=4){out[j++]=d[i]/255;out[j++]=d[i+1]/255;out[j++]=d[i+2]/255}return out;}
-function floatToImageData(data,w,h){const out=new ImageData(w,h),d=out.data;for(let i=0,j=0;i<data.length;i+=3){d[j++]=Math.max(0,Math.min(255,Math.round(data[i]*255)));d[j++]=Math.max(0,Math.min(255,Math.round(data[i+1]*255)));d[j++]=Math.max(0,Math.min(255,Math.round(data[i+2]*255)));d[j++]=255}return out;}
-function lineConvolve(src,w,h,k,transpose=false){const out=new Float32Array(src.length);for(let y=0;y<h;y++){for(let x=0;x<w;x++){const o=(y*w+x)*3;let r=0,g=0,b=0;for(const p of k){const dx=transpose?-p.dx:p.dx,dy=transpose?-p.dy:p.dy,xx=reflect(x+dx,w),yy=reflect(y+dy,h),i=(yy*w+xx)*3;r+=src[i]*p.w;g+=src[i+1]*p.w;b+=src[i+2]*p.w}out[o]=r;out[o+1]=g;out[o+2]=b}}return out;}
-function laplacian(src,w,h){const out=new Float32Array(src.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++){const l=reflect(x-1,w),r=reflect(x+1,w),u=reflect(y-1,h),d=reflect(y+1,h),o=(y*w+x)*3;for(let c=0;c<3;c++)out[o+c]=src[(y*w+l)*3+c]+src[(y*w+r)*3+c]+src[(u*w+x)*3+c]+src[(d*w+x)*3+c]-4*src[o+c]}return out;}
-function stats(data,w,h){let edge=0,clip=0,hp=0,count=0;for(let y=1;y<h-1;y+=2)for(let x=1;x<w-1;x+=2){const o=(y*w+x)*3,l=(y*w+x-1)*3,r=(y*w+x+1)*3,u=((y-1)*w+x)*3,d=((y+1)*w+x)*3;let lum=0,gx=0,gy=0;for(let c=0;c<3;c++){const wt=c===0?.299:c===1?.587:.114;lum+=data[o+c]*wt;gx+=(data[r+c]-data[l+c])*wt;gy+=(data[d+c]-data[u+c])*wt}edge+=Math.hypot(gx,gy);hp+=Math.abs(4*lum-(.299*data[l]+.587*data[l+1]+.114*data[l+2])-(.299*data[r]+.587*data[r+1]+.114*data[r+2])-(.299*data[u]+.587*data[u+1]+.114*data[u+2])-(.299*data[d]+.587*data[d+1]+.114*data[d+2]));if(lum<.01||lum>.99)clip++;count++}return{edge:edge/count,hp:hp/count,clip:clip/count};}
-function rmse(a,b){let s=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];s+=d*d}return Math.sqrt(s/a.length)}
-function extremaAssist(data,w,h,amount){if(amount<=0)return data;const out=new Float32Array(data),lum=new Float32Array(w*h);for(let i=0,j=0;i<data.length;i+=3,j++)lum[j]=.299*data[i]+.587*data[i+1]+.114*data[i+2];for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){let mn=1,mx=0,sum=0;for(let yy=y-1;yy<=y+1;yy++)for(let xx=x-1;xx<=x+1;xx++){const v=lum[yy*w+xx];mn=Math.min(mn,v);mx=Math.max(mx,v);sum+=v}const local=sum/9,v=lum[y*w+x],ext=Math.max(Math.max(0,(.16-mn)/.16),Math.max(0,(mx-.84)/.16)),gain=amount*ext,detail=v-local,o=(y*w+x)*3;for(let c=0;c<3;c++)out[o+c]=Math.max(0,Math.min(1,data[o+c]+gain*detail))}return out;}
-function nextFrame(){return new Promise(r=>requestAnimationFrame(()=>r()))}
-async function deblur(observed,w,h,k,opts){let x=new Float32Array(observed),baseStats=stats(observed,w,h),best=new Float32Array(x),bestResidual=Infinity;for(let iter=0;iter<opts.iterations;iter++){const blurred=lineConvolve(x,w,h,k),residual=new Float32Array(x.length);for(let i=0;i<x.length;i++)residual[i]=observed[i]-blurred[i];const back=lineConvolve(residual,w,h,k,true),lap=opts.reg>0?laplacian(x,w,h):null,candidate=new Float32Array(x.length);for(let i=0;i<x.length;i++)candidate[i]=Math.max(0,Math.min(1,x[i]+opts.step*back[i]+(lap?opts.reg*lap[i]:0)));const cstats=stats(candidate,w,h);let alpha=1;if(opts.guard){const edgeRatio=cstats.edge/Math.max(baseStats.edge,.002),hpRatio=cstats.hp/Math.max(baseStats.hp,.001),clipGrowth=Math.max(0,cstats.clip-baseStats.clip);if(edgeRatio>2.1||hpRatio>2.8||clipGrowth>.035)alpha=.45;else if(edgeRatio>1.65||hpRatio>2.1||clipGrowth>.02)alpha=.7}if(alpha<1)for(let i=0;i<x.length;i++)candidate[i]=x[i]+alpha*(candidate[i]-x[i]);x=candidate;const rb=lineConvolve(x,w,h,k),r=rmse(rb,observed);if(r<bestResidual){bestResidual=r;best=new Float32Array(x)}setStatus(`Restoring · iteration ${iter+1}/${opts.iterations}`,12+78*(iter+1)/opts.iterations);await nextFrame()}if(opts.extrema)best=extremaAssist(best,w,h,opts.detail);return{data:best,residual:bestResidual};}
-function estimateAngle(data,w,h){let gxAll=[],gyAll=[];for(let y=2;y<h-2;y+=3)for(let x=2;x<w-2;x+=3){const idx=(y*w+x)*3,l=(y*w+x-1)*3,r=(y*w+x+1)*3,u=((y-1)*w+x)*3,d=((y+1)*w+x)*3;const lum=i=>.299*data[i]+.587*data[i+1]+.114*data[i+2];gxAll.push(lum(r)-lum(l));gyAll.push(lum(d)-lum(u))}let best=0,bestE=Infinity;for(let a=-90;a<=90;a+=3){const t=a*Math.PI/180,c=Math.cos(t),s=Math.sin(t);let e=0;for(let i=0;i<gxAll.length;i++)e+=Math.abs(gxAll[i]*c+gyAll[i]*s);if(e<bestE){bestE=e;best=a}}return best;}
-async function currentImageData(){const max=+$('maxDim').value,scale=max?Math.min(1,max/Math.max(originalBitmap.width,originalBitmap.height)):1,w=Math.max(1,Math.round(originalBitmap.width*scale)),h=Math.max(1,Math.round(originalBitmap.height*scale)),c=els.canvas;c.width=w;c.height=h;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.clearRect(0,0,w,h);ctx.drawImage(originalBitmap,0,0,w,h);return{imageData:ctx.getImageData(0,0,w,h),w,h,ctx};}
-els.estimateBtn.addEventListener('click',async()=>{if(!originalBitmap)return;setStatus('Estimating dominant blur direction…',20);const {imageData,w,h}=await currentImageData(),a=estimateAngle(imageDataToFloat(imageData),w,h);$('angle').value=a;$('angleOut').textContent=a+'°';$('preset').value='manual';drawKernel();setStatus(`Estimated direction ${a}°. Fine-tune it if needed.`,0)});
-els.run.addEventListener('click',async()=>{if(!originalBitmap)return;els.run.disabled=true;els.download.disabled=true;const started=performance.now();try{setStatus('Preparing image…',5);const {imageData,w,h,ctx}=await currentImageData(),observed=imageDataToFloat(imageData),kernel=makeKernel(+$('length').value,+$('angle').value);drawKernel();const out=await deblur(observed,w,h,kernel,{iterations:+$('iterations').value,step:+$('step').value,reg:+$('regularization').value,detail:+$('detail').value,extrema:$('extrema').checked,guard:$('autoGuard').checked});resultImageData=floatToImageData(out.data,w,h);ctx.putImageData(resultImageData,0,0);if(resultURL)URL.revokeObjectURL(resultURL);const blob=await new Promise(r=>ctx.canvas.toBlob(r,'image/png'));resultURL=URL.createObjectURL(blob);els.result.src=resultURL;els.result.classList.remove('hidden');[els.split,els.splitLine,els.splitKnob].forEach(x=>x.classList.remove('hidden'));els.download.disabled=false;els.swap.disabled=false;els.size.textContent=`${w}×${h}`;const before=stats(observed,w,h),after=stats(out.data,w,h);els.edge.textContent=((after.edge/before.edge-1)*100).toFixed(1)+'%';els.residual.textContent=out.residual.toFixed(4);els.runtime.textContent=((performance.now()-started)/1000).toFixed(2)+'s';setStatus('Done. Drag the comparison slider or export the result.',100)}catch(e){console.error(e);setStatus('Processing failed: '+e.message,0)}finally{els.run.disabled=false}});
-els.split.addEventListener('input',()=>{const v=+els.split.value;els.result.style.clipPath=`inset(0 ${100-v}% 0 0)`;els.splitLine.style.left=v+'%';els.splitKnob.style.left=v+'%'});
-els.download.addEventListener('click',()=>{if(!resultURL)return;const a=document.createElement('a');a.href=resultURL;a.download='adaptive-deblur-result.png';a.click()});
-els.reset.addEventListener('click',()=>{if(!originalBitmap)return;els.result.classList.add('hidden');[els.split,els.splitLine,els.splitKnob].forEach(x=>x.classList.add('hidden'));els.download.disabled=true;els.swap.disabled=true;els.runtime.textContent=els.edge.textContent=els.residual.textContent=els.size.textContent='—';setStatus('Reset to observed source.',0)});
-els.swap.addEventListener('click',()=>{if(els.result.classList.contains('hidden')){els.result.classList.remove('hidden');els.swap.textContent='Hide result'}else{els.result.classList.add('hidden');els.swap.textContent='Show result'}});
+
+(function bootstrap(){
+  const requiredIds=[
+    'errorBanner','fileInput','dropZone','preset','kernelLength','kernelLengthOut','kernelAngle','kernelAngleOut','estimateBtn',
+    'iterations','iterationsOut','dataStep','dataStepOut','smoothness','smoothnessOut','detailStrength','detailStrengthOut',
+    'extremaGuard','artifactGuard','maxDimension','runBtn','resetBtn','downloadBtn','showBtn','status','progressBar','imageMeta',
+    'runtimeMetric','edgeMetric','residualMetric','sizeMetric','viewer','emptyState','sourceImg','resultImg','beforeChip','afterChip',
+    'splitLine','splitKnob','splitSlider','kernelCanvas','kernelMeta','workCanvas','outputCanvas'
+  ];
+
+  function init(){
+    const ui={};
+    const missing=[];
+    for(const id of requiredIds){
+      const node=document.getElementById(id);
+      if(!node) missing.push(id); else ui[id]=node;
+    }
+    if(missing.length){
+      const banner=document.getElementById('errorBanner');
+      if(banner){banner.style.display='block';banner.textContent='Browser Lab initialization error. Missing UI elements: '+missing.join(', ');}
+      console.error('Browser Lab missing elements:',missing);
+      return;
+    }
+
+    let originalImage=null;
+    let originalUrl='';
+    let resultUrl='';
+    let sourceName='image';
+    let lastResult=null;
+    let lastKernel=null;
+    let busy=false;
+
+    const presets={
+      balanced:{length:21,angle:0,iterations:8,step:.65,smooth:.030,detail:.12,extrema:true,guard:true,max:512},
+      long:{length:41,angle:0,iterations:10,step:.58,smooth:.040,detail:.10,extrema:true,guard:true,max:512},
+      night:{length:25,angle:0,iterations:7,step:.50,smooth:.055,detail:.06,extrema:true,guard:true,max:512},
+      detail:{length:15,angle:0,iterations:9,step:.62,smooth:.020,detail:.18,extrema:true,guard:true,max:768}
+    };
+
+    const bind=(node,event,fn)=>node.addEventListener(event,fn);
+    const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+    const tick=()=>new Promise(resolve=>requestAnimationFrame(()=>resolve()));
+
+    function setStatus(message,progress=null){
+      ui.status.childNodes[0].nodeValue=message+' ';
+      if(progress!==null) ui.progressBar.style.width=clamp(progress,0,100)+'%';
+    }
+
+    function updateOutputs(){
+      ui.kernelLengthOut.textContent=ui.kernelLength.value+' px';
+      ui.kernelAngleOut.textContent=Number(ui.kernelAngle.value).toFixed(0)+'°';
+      ui.iterationsOut.textContent=ui.iterations.value;
+      ui.dataStepOut.textContent=Number(ui.dataStep.value).toFixed(2);
+      ui.smoothnessOut.textContent=Number(ui.smoothness.value).toFixed(3);
+      ui.detailStrengthOut.textContent=Number(ui.detailStrength.value).toFixed(2);
+      drawKernel();
+    }
+
+    function applyPreset(name){
+      if(name==='manual') return;
+      const p=presets[name]||presets.balanced;
+      ui.kernelLength.value=p.length;ui.kernelAngle.value=p.angle;ui.iterations.value=p.iterations;
+      ui.dataStep.value=p.step;ui.smoothness.value=p.smooth;ui.detailStrength.value=p.detail;
+      ui.extremaGuard.checked=p.extrema;ui.artifactGuard.checked=p.guard;ui.maxDimension.value=String(p.max);
+      updateOutputs();
+    }
+
+    function buildKernel(){
+      const length=Math.max(3,Number(ui.kernelLength.value)|0);
+      const angle=Number(ui.kernelAngle.value)*Math.PI/180;
+      const half=(length-1)/2;
+      const map=new Map();
+      for(let i=-half;i<=half;i++){
+        const dx=Math.round(i*Math.cos(angle));
+        const dy=Math.round(i*Math.sin(angle));
+        const key=dx+','+dy;
+        map.set(key,(map.get(key)||0)+1);
+      }
+      const entries=[];let total=0;
+      for(const [key,count] of map){
+        const [dx,dy]=key.split(',').map(Number);entries.push({dx,dy,w:count});total+=count;
+      }
+      for(const e of entries)e.w/=total;
+      return entries;
+    }
+
+    function drawKernel(){
+      const canvas=ui.kernelCanvas,ctx=canvas.getContext('2d');
+      ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#06080c';ctx.fillRect(0,0,canvas.width,canvas.height);
+      const kernel=buildKernel();lastKernel=kernel;
+      const length=Number(ui.kernelLength.value);const scale=Math.min(3.2,(canvas.width*.72)/Math.max(1,length));
+      ctx.save();ctx.translate(canvas.width/2,canvas.height/2);ctx.fillStyle='#fff';ctx.shadowColor='rgba(255,255,255,.75)';ctx.shadowBlur=8;
+      for(const e of kernel){ctx.globalAlpha=clamp(.25+e.w*length*.85,.25,1);ctx.beginPath();ctx.arc(e.dx*scale,e.dy*scale,Math.max(1.8,scale*.75),0,Math.PI*2);ctx.fill();}
+      ctx.restore();ctx.globalAlpha=1;
+      ui.kernelMeta.textContent=`${ui.kernelLength.value} px support · ${Number(ui.kernelAngle.value).toFixed(0)}° · ${kernel.length} discrete samples`;
+    }
+
+    function setButtons(hasImage,hasResult=false){
+      ui.runBtn.disabled=!hasImage||busy;ui.resetBtn.disabled=!hasImage||busy;ui.estimateBtn.disabled=!hasImage||busy;
+      ui.downloadBtn.disabled=!hasResult||busy;ui.showBtn.disabled=!hasResult||busy;
+    }
+
+    async function loadFile(file){
+      if(!file||!file.type.startsWith('image/')){setStatus('Please choose a valid image file.',0);return;}
+      if(originalUrl)URL.revokeObjectURL(originalUrl);if(resultUrl){URL.revokeObjectURL(resultUrl);resultUrl='';}
+      originalUrl=URL.createObjectURL(file);sourceName=(file.name||'image').replace(/\.[^.]+$/,'');
+      const img=new Image();
+      img.onload=()=>{
+        originalImage=img;ui.sourceImg.src=originalUrl;ui.sourceImg.classList.remove('hidden');ui.resultImg.classList.add('hidden');
+        ui.emptyState.classList.add('hidden');toggleComparison(false);ui.imageMeta.textContent=`${file.name} · ${img.naturalWidth}×${img.naturalHeight}`;
+        ui.runtimeMetric.textContent='—';ui.edgeMetric.textContent='—';ui.residualMetric.textContent='—';ui.sizeMetric.textContent='—';
+        lastResult=null;setButtons(true,false);setStatus('Image ready. Estimate the angle or tune the PSF, then run deblur.',0);
+      };
+      img.onerror=()=>setStatus('Could not decode this image.',0);
+      img.src=originalUrl;
+    }
+
+    function workingImageData(maxDim){
+      const w0=originalImage.naturalWidth,h0=originalImage.naturalHeight;
+      const scale=maxDim>0?Math.min(1,maxDim/Math.max(w0,h0)):1;
+      const w=Math.max(2,Math.round(w0*scale)),h=Math.max(2,Math.round(h0*scale));
+      const c=ui.workCanvas;c.width=w;c.height=h;const ctx=c.getContext('2d',{willReadFrequently:true});
+      ctx.clearRect(0,0,w,h);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(originalImage,0,0,w,h);
+      return {image:ctx.getImageData(0,0,w,h),w,h};
+    }
+
+    function rgbaToRgbFloat(imageData){
+      const src=imageData.data,out=new Float32Array((src.length/4)*3);let j=0;
+      for(let i=0;i<src.length;i+=4){out[j++]=src[i]/255;out[j++]=src[i+1]/255;out[j++]=src[i+2]/255;}
+      return out;
+    }
+
+    function rgbToImageData(rgb,w,h){
+      const out=new Uint8ClampedArray(w*h*4);let j=0;
+      for(let i=0;i<rgb.length;i+=3){out[j++]=Math.round(clamp(rgb[i],0,1)*255);out[j++]=Math.round(clamp(rgb[i+1],0,1)*255);out[j++]=Math.round(clamp(rgb[i+2],0,1)*255);out[j++]=255;}
+      return new ImageData(out,w,h);
+    }
+
+    function motionBlur(rgb,w,h,kernel,reverse=false){
+      const out=new Float32Array(rgb.length);const ks=reverse?kernel.map(e=>({dx:-e.dx,dy:-e.dy,w:e.w})):kernel;
+      for(let y=0;y<h;y++){
+        for(let x=0;x<w;x++){
+          const oi=(y*w+x)*3;let r=0,g=0,b=0;
+          for(const e of ks){const xx=clamp(x+e.dx,0,w-1),yy=clamp(y+e.dy,0,h-1),ii=(yy*w+xx)*3;r+=rgb[ii]*e.w;g+=rgb[ii+1]*e.w;b+=rgb[ii+2]*e.w;}
+          out[oi]=r;out[oi+1]=g;out[oi+2]=b;
+        }
+      }
+      return out;
+    }
+
+    function smoothAndDetail(candidate,w,h,smooth,detail,extrema){
+      const out=candidate.slice();
+      for(let y=1;y<h-1;y++){
+        for(let x=1;x<w-1;x++){
+          const i=(y*w+x)*3,il=i-3,ir=i+3,iu=i-w*3,id=i+w*3;
+          const lum=.2126*candidate[i]+.7152*candidate[i+1]+.0722*candidate[i+2];
+          const extremaWeight=extrema?(lum<.18||lum>.82?1:.25):0;
+          for(let c=0;c<3;c++){
+            const center=candidate[i+c];const avg=.25*(candidate[il+c]+candidate[ir+c]+candidate[iu+c]+candidate[id+c]);
+            let v=center+smooth*(avg-center);
+            if(detail>0)v+=detail*extremaWeight*(center-avg);
+            out[i+c]=v;
+          }
+        }
+      }
+      return out;
+    }
+
+    function edgeEnergy(rgb,w,h){
+      let sum=0,n=0;
+      for(let y=1;y<h-1;y+=2){for(let x=1;x<w-1;x+=2){
+        const i=(y*w+x)*3,l=i-3,r=i+3,u=i-w*3,d=i+w*3;
+        const lum=k=>.2126*rgb[k]+.7152*rgb[k+1]+.0722*rgb[k+2];const gx=lum(r)-lum(l),gy=lum(d)-lum(u);sum+=Math.hypot(gx,gy);n++;
+      }}return sum/Math.max(1,n);
+    }
+
+    function clippingRatio(rgb){let n=0;for(let i=0;i<rgb.length;i+=3){if(rgb[i]<.002||rgb[i]>.998||rgb[i+1]<.002||rgb[i+1]>.998||rgb[i+2]<.002||rgb[i+2]>.998)n++;}return n/(rgb.length/3);}
+
+    function rmse(a,b){let s=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];s+=d*d;}return Math.sqrt(s/a.length);}
+
+    async function runDeblur(){
+      if(!originalImage||busy)return;busy=true;setButtons(true,!!lastResult);setStatus('Preparing working image…',3);await tick();
+      try{
+        const start=performance.now();const maxDim=Number(ui.maxDimension.value);const work=workingImageData(maxDim);const source=rgbaToRgbFloat(work.image);const w=work.w,h=work.h;const kernel=buildKernel();
+        let x=source.slice();const iterations=Number(ui.iterations.value);const step=Number(ui.dataStep.value);const smooth=Number(ui.smoothness.value);const detail=Number(ui.detailStrength.value);const extrema=ui.extremaGuard.checked;const guard=ui.artifactGuard.checked;
+        const baseEdge=edgeEnergy(source,w,h);const baseClip=clippingRatio(source);
+        for(let iter=0;iter<iterations;iter++){
+          setStatus(`Restoring · iteration ${iter+1}/${iterations}`,8+76*(iter/iterations));await tick();
+          const blurred=motionBlur(x,w,h,kernel,false);const residual=new Float32Array(source.length);for(let i=0;i<source.length;i++)residual[i]=source[i]-blurred[i];
+          const back=motionBlur(residual,w,h,kernel,true);const candidate=new Float32Array(x.length);for(let i=0;i<x.length;i++)candidate[i]=x[i]+step*back[i];
+          let next=smoothAndDetail(candidate,w,h,smooth,detail,extrema);
+          if(guard){const e=edgeEnergy(next,w,h),clip=clippingRatio(next);if(e>baseEdge*2.35||clip>baseClip+.06){for(let i=0;i<next.length;i++)next[i]=.6*x[i]+.4*next[i];}}
+          for(let i=0;i<next.length;i++)next[i]=clamp(next[i],0,1);x=next;
+        }
+        setStatus('Rendering result…',90);await tick();
+        const outCanvas=ui.outputCanvas;outCanvas.width=w;outCanvas.height=h;outCanvas.getContext('2d').putImageData(rgbToImageData(x,w,h),0,0);
+        if(resultUrl)URL.revokeObjectURL(resultUrl);const blob=await new Promise(resolve=>outCanvas.toBlob(resolve,'image/png',1));resultUrl=URL.createObjectURL(blob);ui.resultImg.src=resultUrl;ui.resultImg.classList.remove('hidden');
+        lastResult={blob,rgb:x,w,h};toggleComparison(true);ui.splitSlider.value='50';updateSplit(50);
+        const reblur=motionBlur(x,w,h,kernel,false);const residual=rmse(source,reblur);const edge=edgeEnergy(x,w,h)/Math.max(baseEdge,1e-9);const runtime=(performance.now()-start)/1000;
+        ui.runtimeMetric.textContent=runtime.toFixed(2)+' s';ui.edgeMetric.textContent=edge.toFixed(2)+'×';ui.residualMetric.textContent=residual.toFixed(4);ui.sizeMetric.textContent=`${w}×${h}`;
+        setStatus('Done. Drag the comparison slider or export the PNG.',100);
+      }catch(err){console.error(err);setStatus('Deblurring failed: '+(err&&err.message?err.message:String(err)),0);}finally{busy=false;setButtons(!!originalImage,!!lastResult);}
+    }
+
+    function toggleComparison(show){
+      const nodes=[ui.splitSlider,ui.splitLine,ui.splitKnob,ui.beforeChip,ui.afterChip];for(const n of nodes)n.classList.toggle('hidden',!show);
+      if(show){ui.sourceImg.classList.remove('hidden');ui.resultImg.classList.remove('hidden');}
+    }
+
+    function updateSplit(value){const v=clamp(Number(value),0,100);ui.resultImg.style.clipPath=`inset(0 ${100-v}% 0 0)`;ui.splitLine.style.left=v+'%';ui.splitKnob.style.left=v+'%';}
+
+    function estimateAngle(){
+      if(!originalImage||busy)return;setStatus('Estimating dominant blur direction…',15);
+      const work=workingImageData(256),rgb=rgbaToRgbFloat(work.image),w=work.w,h=work.h;let sxx=0,syy=0,sxy=0;
+      const lum=i=>.2126*rgb[i]+.7152*rgb[i+1]+.0722*rgb[i+2];
+      for(let y=2;y<h-2;y+=2){for(let x=2;x<w-2;x+=2){const i=(y*w+x)*3;const gx=lum(i+3)-lum(i-3),gy=lum(i+w*3)-lum(i-w*3);const mag=Math.hypot(gx,gy);if(mag<.03)continue;sxx+=gx*gx;syy+=gy*gy;sxy+=gx*gy;}}
+      const edgeAngle=.5*Math.atan2(2*sxy,sxx-syy)*180/Math.PI;let motion=edgeAngle+90;while(motion>90)motion-=180;while(motion<-90)motion+=180;
+      ui.kernelAngle.value=String(Math.round(motion));ui.preset.value='manual';updateOutputs();setStatus(`Estimated motion direction: ${Math.round(motion)}°. Tune kernel length before running.`,0);
+    }
+
+    function reset(){if(!originalImage)return;ui.preset.value='balanced';applyPreset('balanced');lastResult=null;if(resultUrl){URL.revokeObjectURL(resultUrl);resultUrl='';}ui.resultImg.classList.add('hidden');toggleComparison(false);ui.runtimeMetric.textContent='—';ui.edgeMetric.textContent='—';ui.residualMetric.textContent='—';ui.sizeMetric.textContent='—';setButtons(true,false);setStatus('Reset complete. Ready to run.',0);}
+
+    function download(){if(!lastResult)return;const a=document.createElement('a');a.href=resultUrl;a.download=sourceName+'_deblurred.png';document.body.appendChild(a);a.click();a.remove();}
+    function showResult(){if(!lastResult)return;const showing=Number(ui.splitSlider.value)!==100;ui.splitSlider.value=showing?'100':'50';updateSplit(ui.splitSlider.value);ui.showBtn.textContent=showing?'Compare':'Show result';}
+
+    bind(ui.fileInput,'change',e=>loadFile(e.target.files&&e.target.files[0]));
+    bind(ui.dropZone,'dragover',e=>{e.preventDefault();ui.dropZone.classList.add('drag');});
+    bind(ui.dropZone,'dragleave',()=>ui.dropZone.classList.remove('drag'));
+    bind(ui.dropZone,'drop',e=>{e.preventDefault();ui.dropZone.classList.remove('drag');loadFile(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]);});
+    bind(ui.preset,'change',()=>applyPreset(ui.preset.value));
+    for(const node of [ui.kernelLength,ui.kernelAngle,ui.iterations,ui.dataStep,ui.smoothness,ui.detailStrength])bind(node,'input',()=>{ui.preset.value='manual';updateOutputs();});
+    bind(ui.estimateBtn,'click',estimateAngle);bind(ui.runBtn,'click',runDeblur);bind(ui.resetBtn,'click',reset);bind(ui.downloadBtn,'click',download);bind(ui.showBtn,'click',showResult);bind(ui.splitSlider,'input',()=>updateSplit(ui.splitSlider.value));
+
+    applyPreset('balanced');drawKernel();setButtons(false,false);setStatus('Upload an image to begin.',0);
+  }
+
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
+})();
 </script>
 </body>
 </html>
