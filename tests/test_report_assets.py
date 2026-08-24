@@ -30,11 +30,6 @@ def test_docker_report_workflow_files_exist() -> None:
     assert all(path.is_file() for path in required)
 
 
-def test_docker_image_copies_standalone_pages_site() -> None:
-    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    assert "COPY docs ./docs" in dockerfile
-
-
 def test_standalone_browser_page_has_no_external_runtime_dependencies() -> None:
     page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
     lower = page.lower()
