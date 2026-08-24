@@ -21,6 +21,10 @@ COPY tests ./tests
 COPY examples ./examples
 COPY scripts ./scripts
 COPY docs ./docs
-RUN mkdir -p /app/results /app/dataset
+
+# Validate the runtime assets at build time instead of copying the Dockerfile
+# itself into the image solely for a test.
+RUN test -f /app/docs/index.html \
+    && mkdir -p /app/results /app/dataset
 
 ENTRYPOINT ["dark-channel-deblur"]
