@@ -3,410 +3,188 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<meta name="color-scheme" content="light" />
-<title>Adaptive Blind Deblur · Browser Lab</title>
+<meta name="description" content="AdaptiveBlindDeblur Browser Lab — standalone blind PSF estimation and image deblurring." />
+<title>AdaptiveBlindDeblur · Browser Lab</title>
 <style>
 :root{
-  --bg:#f6f8fc;--surface:#ffffff;--surface-soft:#f9fbff;--border:#e3e8f2;
-  --text:#172033;--muted:#66748c;--blue:#2563eb;--blue2:#4f7cf3;--blue-soft:#eef4ff;
-  --green:#0f9f6e;--green-soft:#ecfdf5;--amber:#b7791f;--shadow:0 16px 40px rgba(35,55,85,.08);
+  --bg:#f6f8fc;--paper:#fff;--paper2:#fbfcff;--ink:#142033;--muted:#66758a;
+  --line:#dfe6f0;--line2:#cfd9e8;--blue:#2563eb;--blue2:#eaf1ff;--cyan:#0891b2;
+  --green:#15803d;--green2:#ecfdf3;--amber:#a16207;--amber2:#fff8e6;--red:#b42318;
+  --shadow:0 18px 55px rgba(22,38,68,.09);--shadow2:0 8px 24px rgba(22,38,68,.08);
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;background:linear-gradient(180deg,#fff 0,#f7f9fc 340px,#f6f8fc 100%);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}
-button,input,select{font:inherit}
-button{appearance:none}
-.app{max-width:1480px;margin:0 auto;padding:28px 28px 48px}
-.header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px}
-.brandline{display:flex;align-items:center;gap:12px;margin-bottom:12px}.logo{width:42px;height:42px;border-radius:13px;background:linear-gradient(135deg,#2563eb,#78a4ff);display:grid;place-items:center;color:#fff;box-shadow:0 10px 24px rgba(37,99,235,.22)}.logo svg{width:23px;height:23px}
-.kicker{font-size:12px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--blue)}
-h1{font-size:clamp(34px,4.6vw,58px);line-height:1.02;margin:0;letter-spacing:-.045em;max-width:880px}.accent{color:var(--blue)}
-.lead{font-size:16px;line-height:1.7;color:var(--muted);max-width:870px;margin:14px 0 0}
-.header-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.badge{display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:999px;border:1px solid var(--border);background:#fff;color:var(--muted);font-size:12px;font-weight:700;white-space:nowrap}.dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px var(--green-soft)}
-.layout{display:grid;grid-template-columns:360px minmax(0,1fr);gap:20px;align-items:start}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:22px;box-shadow:var(--shadow)}
-.controls{padding:18px;position:sticky;top:18px}.section{padding:16px 0;border-top:1px solid var(--border)}.section:first-child{padding-top:0;border-top:0}.section-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}.section h3{margin:0;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:#44526a}.help{font-size:11px;color:#8b98aa}
-.drop{display:block;border:1.5px dashed #b6c6df;border-radius:17px;padding:20px;text-align:center;background:linear-gradient(180deg,#fbfdff,#f6f9ff);cursor:pointer;transition:.2s}.drop:hover,.drop.drag{border-color:var(--blue);background:var(--blue-soft);transform:translateY(-1px)}.drop-icon{width:44px;height:44px;margin:0 auto 10px;border-radius:14px;background:#fff;border:1px solid var(--border);display:grid;place-items:center;color:var(--blue);box-shadow:0 8px 20px rgba(37,99,235,.08)}.drop strong{display:block;font-size:14px}.drop small{display:block;color:var(--muted);margin-top:5px;line-height:1.5}.drop input{display:none}
-.field{margin:13px 0}.field-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}.field label{font-size:13px;font-weight:650;color:#39465c}.value{font-size:12px;font-weight:750;color:var(--blue);font-variant-numeric:tabular-nums;background:var(--blue-soft);padding:3px 7px;border-radius:7px}
-select{width:100%;border:1px solid #d9e0eb;background:#fff;color:var(--text);padding:10px 11px;border-radius:10px;outline:none}select:focus{border-color:#8aafff;box-shadow:0 0 0 3px #edf3ff}
+html{background:var(--bg)}
+body{margin:0;color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#fff 0,#f8faff 280px,var(--bg) 620px);min-height:100vh}
+button,input,select{font:inherit}button{touch-action:manipulation}
+.shell{max-width:1580px;margin:0 auto;padding:24px}
+.hero{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;padding:10px 2px 22px}
+.brandline{display:flex;gap:10px;align-items:center;color:var(--blue);font-weight:800;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+.branddot{width:10px;height:10px;border-radius:50%;background:var(--blue);box-shadow:0 0 0 5px var(--blue2)}
+h1{font-size:clamp(30px,4.5vw,54px);letter-spacing:-.045em;line-height:1.02;margin:10px 0 12px}
+.hero p{max-width:850px;margin:0;color:var(--muted);font-size:16px;line-height:1.65}
+.hero-badges{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;max-width:430px}
+.badge{display:inline-flex;align-items:center;gap:7px;padding:8px 11px;border:1px solid var(--line);border-radius:999px;background:#fff;color:#4c5c72;font-size:12px;font-weight:700;box-shadow:0 2px 8px rgba(22,38,68,.04)}
+.badge .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.layout{display:grid;grid-template-columns:390px minmax(0,1fr);gap:18px;align-items:start}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow2)}
+.controls{position:sticky;top:14px;overflow:hidden}
+.section{padding:18px;border-top:1px solid var(--line)}.section:first-child{border-top:0}
+.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}
+.section-title h2,.section-title h3{margin:0;font-size:14px;letter-spacing:-.01em}.section-title span{font-size:11px;color:var(--muted)}
+.stepno{display:inline-grid;place-items:center;width:25px;height:25px;border-radius:8px;background:var(--blue2);color:var(--blue);font-weight:900;font-size:12px;margin-right:8px}
+.drop{display:block;border:1.5px dashed #9eb7de;border-radius:16px;padding:20px;background:#f8fbff;text-align:center;cursor:pointer;transition:.18s}
+.drop:hover,.drop.drag{border-color:var(--blue);background:var(--blue2);transform:translateY(-1px)}
+.drop strong{display:block;font-size:16px;margin-bottom:5px}.drop small{color:var(--muted);line-height:1.45}.drop input{display:none}
+.field{margin:12px 0}.field label,.field-head label{font-size:12px;font-weight:800;color:#41516a}.field-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}.field-head output{font-size:12px;font-weight:800;color:var(--blue);font-variant-numeric:tabular-nums}
+select,input[type=number]{width:100%;padding:10px 11px;border:1px solid var(--line2);border-radius:11px;background:#fff;color:var(--ink);outline:none}select:focus,input[type=number]:focus{border-color:#8ab1ff;box-shadow:0 0 0 3px #edf3ff}
 input[type=range]{width:100%;accent-color:var(--blue)}
-.check{display:flex;align-items:flex-start;gap:9px;margin:11px 0;font-size:12.5px;color:#45536a;line-height:1.45}.check input{margin-top:2px;accent-color:var(--blue)}
-.btn{border:0;border-radius:11px;padding:10px 13px;font-weight:750;cursor:pointer;transition:.16s;min-height:40px}.btn:hover:not(:disabled){transform:translateY(-1px)}.btn:disabled{opacity:.43;cursor:not-allowed}.primary{background:linear-gradient(135deg,var(--blue),#4d7df0);color:#fff;box-shadow:0 8px 18px rgba(37,99,235,.18)}.secondary{background:#f3f6fb;color:#334158;border:1px solid #dfe6f0}.outline{background:#fff;color:var(--blue);border:1px solid #cbd9f4}.actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}.wide{width:100%}
-.status{margin-top:12px;border:1px solid var(--border);border-radius:12px;padding:11px 12px;background:#fafbfd;color:var(--muted);font-size:12px;line-height:1.5}.progress{height:5px;border-radius:99px;background:#e9eef6;margin-top:9px;overflow:hidden}.progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--blue),#78a4ff);transition:width .2s}
-.workspace{padding:18px}.workspace-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}.tags{display:flex;gap:7px;flex-wrap:wrap}.tag{font-size:10px;font-weight:800;letter-spacing:.06em;padding:5px 7px;border-radius:7px;background:var(--blue-soft);color:var(--blue)}.meta{font-size:12px;color:var(--muted);text-align:right}
-.metrics{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:10px;margin-bottom:14px}.metric{border:1px solid var(--border);background:linear-gradient(180deg,#fff,#fbfcff);border-radius:14px;padding:12px}.metric span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#8390a3;font-weight:750}.metric strong{display:block;margin-top:5px;font-size:20px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.viewer{position:relative;min-height:520px;aspect-ratio:16/10;overflow:hidden;border-radius:18px;border:1px solid var(--border);background-color:#f5f7fa;background-image:linear-gradient(45deg,#eef2f6 25%,transparent 25%),linear-gradient(-45deg,#eef2f6 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#eef2f6 75%),linear-gradient(-45deg,transparent 75%,#eef2f6 75%);background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0}.viewer img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;user-select:none}.result{clip-path:inset(0 50% 0 0)}.empty{position:absolute;inset:0;display:grid;place-items:center;padding:40px;text-align:center}.empty-box{max-width:430px}.empty-visual{width:82px;height:82px;border-radius:24px;background:#fff;border:1px solid var(--border);box-shadow:0 16px 35px rgba(40,60,90,.08);margin:0 auto 16px;display:grid;place-items:center;color:var(--blue)}.empty strong{display:block;font-size:19px;margin-bottom:8px}.empty p{margin:0;color:var(--muted);line-height:1.6;font-size:13px}
-.split-line{position:absolute;top:0;bottom:0;left:50%;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(25,36,53,.15);pointer-events:none}.split-knob{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:42px;height:42px;border-radius:50%;background:#fff;border:1px solid #d7deea;color:var(--blue);display:grid;place-items:center;font-size:18px;font-weight:900;box-shadow:0 10px 28px rgba(20,35,60,.18);pointer-events:none}.split{position:absolute;left:10%;right:10%;bottom:13px;width:80%;z-index:4;accent-color:var(--blue)}.label-chip{position:absolute;top:13px;z-index:5;padding:6px 9px;border-radius:8px;font-size:10px;font-weight:800;letter-spacing:.04em;background:rgba(255,255,255,.93);border:1px solid rgba(220,227,238,.95);box-shadow:0 5px 14px rgba(20,35,60,.08)}.before-chip{left:13px}.after-chip{right:13px;color:var(--blue)}
-.lower{display:grid;grid-template-columns:280px 1fr;gap:14px;margin-top:14px}.subcard{border:1px solid var(--border);border-radius:16px;padding:14px;background:#fff}.subcard h4{margin:0 0 10px;font-size:14px}.kernel-wrap{background:#0b0e13;border-radius:13px;padding:8px}.kernel-wrap canvas{display:block;width:100%;aspect-ratio:1;border-radius:8px;image-rendering:pixelated}.kernel-meta{font-size:11.5px;color:var(--muted);line-height:1.55;margin-top:10px}.explain{font-size:13px;line-height:1.72;color:#526078}.explain strong{color:#26344a}.explain p{margin:0 0 10px}.explain p:last-child{margin-bottom:0}.notice{margin-top:12px;padding:10px 12px;border-radius:11px;background:#fffaf0;border:1px solid #f1dfb5;color:#7c5b20;font-size:11.5px;line-height:1.55}.footer{margin-top:15px;color:#8390a3;font-size:11.5px;line-height:1.6}.hidden{display:none!important}
-#errorBanner{display:none;margin:0 0 18px;padding:13px 15px;border-radius:12px;border:1px solid #fecaca;background:#fff1f2;color:#991b1b;font-size:13px;line-height:1.5}
-@media(max-width:1000px){.layout{grid-template-columns:1fr}.controls{position:static}.header{flex-direction:column}.header-actions{justify-content:flex-start}.viewer{min-height:400px}.lower{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}}
-@media(max-width:620px){.app{padding:18px 14px 34px}.metrics{grid-template-columns:1fr 1fr}.actions{grid-template-columns:1fr}.viewer{min-height:320px}.workspace{padding:12px}.controls{padding:14px}.meta{text-align:left}.workspace-head{align-items:flex-start;flex-direction:column}}
+.check{display:flex;gap:9px;align-items:flex-start;font-size:12px;color:#44546a;margin:9px 0;line-height:1.45}.check input{margin-top:2px;accent-color:var(--blue)}
+.help{font-size:11px;color:var(--muted);line-height:1.55;margin-top:7px}
+.mode-note{padding:10px 11px;border-radius:11px;background:#f7f9fd;border:1px solid var(--line);font-size:11px;color:#526176;line-height:1.5;margin-top:10px}
+.advanced summary{cursor:pointer;font-weight:800;font-size:12px;color:#45556d;list-style:none}.advanced summary::-webkit-details-marker{display:none}.advanced summary:after{content:'+';float:right;color:var(--blue);font-size:18px;line-height:12px}.advanced[open] summary:after{content:'−'}
+.advanced-body{padding-top:10px}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}.btn{border:0;border-radius:11px;padding:11px 13px;font-weight:850;cursor:pointer;transition:.15s}.btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 7px 18px rgba(37,99,235,.12)}.btn:disabled{opacity:.42;cursor:not-allowed}
+.primary{background:var(--blue);color:#fff}.secondary{background:#eef4ff;color:#1853c6;border:1px solid #d6e5ff}.ghost{background:#fff;color:#42536a;border:1px solid var(--line2)}.danger-lite{background:#fff7f6;color:var(--red);border:1px solid #fee0dc}
+.status{margin-top:10px;border:1px solid var(--line);background:#fafbfe;border-radius:11px;padding:10px 11px;font-size:11px;color:#57667a;line-height:1.5}.progress{height:5px;border-radius:999px;background:#e9eef7;overflow:hidden;margin-top:8px}.progress span{display:block;width:0;height:100%;background:linear-gradient(90deg,var(--blue),#4f9cff);transition:width .2s}
+.manual-box{border:1px solid var(--line);border-radius:14px;padding:11px;background:#fbfcff;margin-top:11px}.manual-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.manual-canvas-wrap{background:#0b1220;border-radius:12px;padding:8px;margin-top:9px}.manual-canvas-wrap canvas{display:block;width:100%;aspect-ratio:1;background:#000;border-radius:8px;cursor:crosshair;image-rendering:pixelated}
+.workspace{padding:18px;min-width:0}.toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:13px}.tags{display:flex;flex-wrap:wrap;gap:6px}.tag{padding:5px 8px;border-radius:7px;font-size:10px;font-weight:900;letter-spacing:.04em;background:#eef4ff;color:#255cc7}.tag.green{background:var(--green2);color:var(--green)}.tag.amber{background:var(--amber2);color:var(--amber)}
+.meta{font-size:12px;color:var(--muted);text-align:right}.metrics{display:grid;grid-template-columns:repeat(5,minmax(115px,1fr));gap:9px;margin-bottom:13px}.metric{background:#fbfcff;border:1px solid var(--line);border-radius:13px;padding:11px}.metric span{display:block;color:#718096;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}.metric strong{display:block;margin-top:4px;font-size:17px;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
+.viewer{position:relative;min-height:490px;aspect-ratio:16/10;border-radius:17px;overflow:hidden;border:1px solid var(--line);background:linear-gradient(45deg,#f4f6fa 25%,transparent 25%) -10px 0/20px 20px,linear-gradient(45deg,transparent 75%,#f4f6fa 75%) -10px 0/20px 20px,linear-gradient(45deg,transparent 75%,#f4f6fa 75%) 0 10px/20px 20px,linear-gradient(45deg,#f4f6fa 25%,#fff 25%) 0 10px/20px 20px}
+.viewer img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;user-select:none}.viewer .result{clip-path:inset(0 50% 0 0)}.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:40px;color:#78869a}.empty strong{font-size:20px;color:#33445c}.split-line{position:absolute;top:0;bottom:0;left:50%;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(29,47,74,.35);pointer-events:none}.split-knob{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:#fff;border:1px solid #d6dfec;color:#2e5fb9;font-weight:900;box-shadow:0 8px 24px rgba(22,38,68,.15);pointer-events:none}.split{position:absolute;left:10%;right:10%;bottom:14px;width:80%;accent-color:var(--blue);z-index:5}
+.lower{display:grid;grid-template-columns:300px minmax(0,1fr);gap:13px;margin-top:13px}.kernel-card,.info-card{border:1px solid var(--line);border-radius:15px;background:#fbfcff;padding:13px}.kernel-card h3,.info-card h3{font-size:13px;margin:0 0 9px}.kernel-canvas{display:block;width:100%;aspect-ratio:1;background:#05070b;border-radius:11px;image-rendering:pixelated}.kernel-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:9px}.ks{background:#fff;border:1px solid var(--line);border-radius:9px;padding:7px}.ks span{display:block;font-size:9px;text-transform:uppercase;color:#7b899a;font-weight:900}.ks strong{font-size:12px}.algorithm-flow{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:10px 0}.flow-step{border:1px solid var(--line);border-radius:10px;background:#fff;padding:9px;font-size:11px;color:#4b5d73;line-height:1.4}.flow-step b{color:#25364e;display:block;margin-bottom:3px}.info-card p{font-size:12px;color:#5d6c80;line-height:1.65;margin:8px 0}.note{padding:10px 11px;border-radius:10px;background:#eef5ff;border:1px solid #d8e7ff;color:#3d5576;font-size:11px;line-height:1.55}.hidden{display:none!important}.fatal{max-width:900px;margin:40px auto;padding:18px;border:1px solid #f2b8b5;background:#fff6f5;color:#8c1c13;border-radius:14px}
+.footer{font-size:11px;color:#7a8798;line-height:1.6;margin:16px 3px 4px}
+@media(max-width:1100px){.layout{grid-template-columns:1fr}.controls{position:static}.metrics{grid-template-columns:repeat(3,1fr)}.viewer{min-height:390px}.hero{flex-direction:column}.hero-badges{justify-content:flex-start}}
+@media(max-width:720px){.shell{padding:12px}.metrics{grid-template-columns:1fr 1fr}.lower{grid-template-columns:1fr}.algorithm-flow{grid-template-columns:1fr 1fr}.viewer{min-height:300px}.actions{grid-template-columns:1fr}.manual-grid{grid-template-columns:1fr}.meta{text-align:left}.toolbar{align-items:flex-start;flex-direction:column}}
 </style>
 </head>
 <body>
-<div class="app">
-  <div id="errorBanner"></div>
-  <header class="header">
+<div id="fatalError" class="fatal hidden"></div>
+<div class="shell" id="appShell">
+  <header class="hero">
     <div>
-      <div class="brandline">
-        <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 16.5 9.2 11l3.3 3.2L20 6.8" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 7.5h4M16 16.5h4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg></div>
-        <div class="kicker">Standalone · browser-only restoration</div>
-      </div>
-      <h1>Adaptive Blind Deblur <span class="accent">Browser Lab</span></h1>
-      <p class="lead">Upload a blurred image, estimate a motion direction, tune the PSF, and experiment with a lightweight reference-free restoration directly in your browser. No image is uploaded anywhere.</p>
+      <div class="brandline"><span class="branddot"></span>AdaptiveBlindDeblur · Browser Lab</div>
+      <h1>Estimate the blur kernel.<br>Then deblur the image.</h1>
+      <p>Upload a blurred image and run a browser implementation of the repository’s blind-deblurring workflow: multi-scale latent/PSF alternation, gradient-domain FFT kernel estimation, optional dark-channel guidance, robust PSF cleanup, and guarded final restoration. You can also provide a PSF manually.</p>
     </div>
-    <div class="header-actions">
-      <div class="badge"><span class="dot"></span> Runs locally</div>
-      <div class="badge">No server</div>
-      <div class="badge">No dependencies</div>
-    </div>
+    <div class="hero-badges"><span class="badge"><span class="dot"></span>Local processing</span><span class="badge">No backend</span><span class="badge">No third-party runtime</span></div>
   </header>
 
   <div class="layout">
     <aside class="card controls">
       <section class="section">
-        <label id="dropZone" class="drop" for="fileInput">
-          <div class="drop-icon" aria-hidden="true">↥</div>
-          <strong>Drop an image here</strong>
-          <small>or click to choose PNG, JPEG, or WebP</small>
-          <input id="fileInput" type="file" accept="image/*" />
-        </label>
+        <label class="drop" id="dropZone" for="fileInput"><strong>Drop a blurred image here</strong><small>or click to choose PNG / JPEG / WebP</small><input id="fileInput" type="file" accept="image/*" /></label>
       </section>
 
       <section class="section">
-        <div class="section-title"><h3>Preset</h3><span class="help">Starting point</span></div>
-        <select id="preset" aria-label="Restoration preset">
-          <option value="balanced">Balanced</option>
-          <option value="long">Long camera motion</option>
-          <option value="night">Night / saturated</option>
-          <option value="detail">Fine detail</option>
-          <option value="manual">Manual</option>
-        </select>
+        <div class="section-title"><h2><span class="stepno">1</span>Estimate / select PSF</h2><span id="kernelState">No PSF</span></div>
+        <div class="field"><label for="estimatorMode">Kernel estimator</label><select id="estimatorMode"><option value="adaptive" selected>Adaptive auto · dark + gradient candidates</option><option value="dark">Dark-channel guided blind estimation</option><option value="gradient">Gradient-only blind estimation</option><option value="manual-line">Manual motion line</option><option value="manual-draw">Draw custom PSF</option><option value="manual-upload">Upload PSF image</option></select></div>
+        <div class="mode-note" id="estimatorNote"></div>
+        <div class="field"><div class="field-head"><label for="kernelSize">PSF support</label><output id="kernelSizeOut">65×65</output></div><input id="kernelSize" type="range" min="15" max="121" step="2" value="65" /></div>
+        <div id="manualLineBox" class="manual-box hidden"><div class="manual-grid"><div class="field"><div class="field-head"><label for="motionLength">Motion length</label><output id="motionLengthOut">35 px</output></div><input id="motionLength" type="range" min="3" max="63" value="35" /></div><div class="field"><div class="field-head"><label for="motionAngle">Motion angle</label><output id="motionAngleOut">0°</output></div><input id="motionAngle" type="range" min="-90" max="90" value="0" /></div></div><button class="btn secondary" id="useLineKernelBtn" style="width:100%">Use manual line PSF</button></div>
+        <div id="manualDrawBox" class="manual-box hidden"><div class="help">Draw the camera-motion path. Bright strokes become PSF mass.</div><div class="manual-canvas-wrap"><canvas id="manualKernelCanvas" width="220" height="220"></canvas></div><div class="actions" style="margin-top:9px"><button class="btn secondary" id="useDrawnKernelBtn">Use drawn PSF</button><button class="btn ghost" id="clearDrawnKernelBtn">Clear</button></div></div>
+        <div id="manualUploadBox" class="manual-box hidden"><div class="help">Upload a measured/synthetic kernel image. Bright pixels become PSF probability mass.</div><input id="kernelFileInput" type="file" accept="image/png,image/jpeg,image/webp" /><button class="btn secondary" id="useUploadedKernelBtn" style="width:100%;margin-top:9px">Use uploaded PSF</button></div>
+
+        <details class="advanced" open><summary>Blind-estimation settings</summary><div class="advanced-body"><div class="field"><div class="field-head"><label for="estimationMax">Estimation resolution</label><output id="estimationMaxOut">256 px</output></div><input id="estimationMax" type="range" min="128" max="384" step="32" value="256" /></div><div class="field"><div class="field-head"><label for="xkIter">Latent ↔ PSF iterations</label><output id="xkIterOut">4</output></div><input id="xkIter" type="range" min="1" max="6" value="4" /></div><div class="field"><div class="field-head"><label for="gamma">Gamma</label><output id="gammaOut">1.00</output></div><input id="gamma" type="range" min="0.6" max="2.2" step="0.05" value="1" /></div><div class="field"><div class="field-head"><label for="lambdaDark">Dark prior λ</label><output id="lambdaDarkOut">0.0040</output></div><input id="lambdaDark" type="range" min="0" max="0.012" step="0.0005" value="0.004" /></div><div class="field"><div class="field-head"><label for="lambdaGrad">Gradient prior λ</label><output id="lambdaGradOut">0.0040</output></div><input id="lambdaGrad" type="range" min="0.0005" max="0.012" step="0.0005" value="0.004" /></div><div class="field"><div class="field-head"><label for="darkPatch">Dark-channel patch</label><output id="darkPatchOut">35</output></div><input id="darkPatch" type="range" min="9" max="45" step="2" value="35" /></div><label class="check"><input id="robustPsf" type="checkbox" checked />Robust PSF cleanup and branch suppression.</label></div></details>
+        <button class="btn primary" id="estimatePsfBtn" style="width:100%;margin-top:12px" disabled>Estimate PSF</button>
       </section>
 
       <section class="section">
-        <div class="section-title"><h3>Motion PSF</h3><span class="help">Blur model</span></div>
-        <div class="field"><div class="field-head"><label for="kernelLength">Kernel length</label><span class="value" id="kernelLengthOut">21 px</span></div><input id="kernelLength" type="range" min="3" max="71" step="2" value="21" /></div>
-        <div class="field"><div class="field-head"><label for="kernelAngle">Kernel angle</label><span class="value" id="kernelAngleOut">0°</span></div><input id="kernelAngle" type="range" min="-90" max="90" step="1" value="0" /></div>
-        <button id="estimateBtn" class="btn outline wide">Estimate angle from image</button>
-      </section>
-
-      <section class="section">
-        <div class="section-title"><h3>Restoration</h3><span class="help">Interactive approximation</span></div>
-        <div class="field"><div class="field-head"><label for="iterations">Iterations</label><span class="value" id="iterationsOut">8</span></div><input id="iterations" type="range" min="1" max="20" step="1" value="8" /></div>
-        <div class="field"><div class="field-head"><label for="dataStep">Data step</label><span class="value" id="dataStepOut">0.65</span></div><input id="dataStep" type="range" min="0.15" max="0.95" step="0.05" value="0.65" /></div>
-        <div class="field"><div class="field-head"><label for="smoothness">Smoothness</label><span class="value" id="smoothnessOut">0.030</span></div><input id="smoothness" type="range" min="0" max="0.12" step="0.005" value="0.030" /></div>
-        <div class="field"><div class="field-head"><label for="detailStrength">Extrema detail</label><span class="value" id="detailStrengthOut">0.12</span></div><input id="detailStrength" type="range" min="0" max="0.40" step="0.02" value="0.12" /></div>
-        <label class="check"><input id="extremaGuard" type="checkbox" checked /> Protect strong dark/bright extrema while restoring detail.</label>
-        <label class="check"><input id="artifactGuard" type="checkbox" checked /> Attenuate updates when edge/noise growth becomes excessive.</label>
-      </section>
-
-      <section class="section">
-        <div class="section-title"><h3>Working size</h3><span class="help">Speed vs detail</span></div>
-        <select id="maxDimension" aria-label="Maximum working dimension">
-          <option value="384">384 px · fastest</option>
-          <option value="512" selected>512 px · recommended</option>
-          <option value="768">768 px · detailed</option>
-          <option value="1024">1024 px · slower</option>
-          <option value="0">Original size</option>
-        </select>
-        <div class="notice">The research benchmark never resizes inputs. This browser lab defaults to a smaller working size only to stay responsive.</div>
-      </section>
-
-      <section class="section">
-        <div class="actions">
-          <button id="runBtn" class="btn primary" disabled>Run deblur</button>
-          <button id="resetBtn" class="btn secondary" disabled>Reset</button>
-          <button id="downloadBtn" class="btn outline" disabled>Export PNG</button>
-          <button id="showBtn" class="btn secondary" disabled>Show result</button>
-        </div>
-        <div id="status" class="status">Upload an image to begin.<div class="progress"><span id="progressBar"></span></div></div>
+        <div class="section-title"><h2><span class="stepno">2</span>Restore image</h2><span id="restoreState">Waiting</span></div>
+        <div class="field"><label for="restoreMethod">Method</label><select id="restoreMethod"><option value="baseline" selected>Adaptive baseline · regularized FFT</option><option value="pnp">Annealed PnP refinement</option><option value="extreme">Dual-extreme refinement</option></select></div>
+        <div class="field"><div class="field-head"><label for="restoreMax">Working resolution</label><output id="restoreMaxOut">768 px</output></div><input id="restoreMax" type="range" min="256" max="1280" step="128" value="768" /></div>
+        <div class="field"><div class="field-head"><label for="regularization">Regularization</label><output id="regularizationOut">0.0030</output></div><input id="regularization" type="range" min="0.0005" max="0.015" step="0.0005" value="0.003" /></div>
+        <div class="field"><div class="field-head"><label for="restoreIter">Refinement passes</label><output id="restoreIterOut">4</output></div><input id="restoreIter" type="range" min="1" max="8" value="4" /></div>
+        <label class="check"><input id="artifactGuard" type="checkbox" checked />Artifact guard for excessive edge/high-pass growth.</label>
+        <div class="actions"><button class="btn primary" id="runBtn" disabled>Run deblur</button><button class="btn ghost" id="resetBtn" disabled>Reset</button><button class="btn secondary" id="downloadBtn" disabled>Export PNG</button><button class="btn ghost" id="showKernelBtn" disabled>PSF details</button></div>
+        <div class="status"><span id="statusText">Upload an image to begin.</span><div class="progress"><span id="progressBar"></span></div></div>
       </section>
     </aside>
 
     <main class="card workspace">
-      <div class="workspace-head">
-        <div class="tags"><span class="tag">INTERACTIVE</span><span class="tag">REFERENCE-FREE</span><span class="tag">LOCAL</span></div>
-        <div id="imageMeta" class="meta">No image loaded</div>
-      </div>
-
-      <div class="metrics">
-        <div class="metric"><span>Runtime</span><strong id="runtimeMetric">—</strong></div>
-        <div class="metric"><span>Edge gain</span><strong id="edgeMetric">—</strong></div>
-        <div class="metric"><span>Residual</span><strong id="residualMetric">—</strong></div>
-        <div class="metric"><span>Working size</span><strong id="sizeMetric">—</strong></div>
-      </div>
-
-      <div id="viewer" class="viewer">
-        <div id="emptyState" class="empty"><div class="empty-box"><div class="empty-visual">◫</div><strong>Your before/after view appears here</strong><p>Upload an image, estimate or tune the motion PSF, then run the restoration. Drag the comparison slider to inspect the result.</p></div></div>
-        <img id="sourceImg" class="hidden" alt="Observed source" />
-        <img id="resultImg" class="result hidden" alt="Deblurred result" />
-        <div id="beforeChip" class="label-chip before-chip hidden">BEFORE</div>
-        <div id="afterChip" class="label-chip after-chip hidden">AFTER</div>
-        <div id="splitLine" class="split-line hidden"></div>
-        <div id="splitKnob" class="split-knob hidden">↔</div>
-        <input id="splitSlider" class="split hidden" type="range" min="0" max="100" value="50" aria-label="Before and after comparison" />
-      </div>
-
-      <div class="lower">
-        <div class="subcard">
-          <h4>PSF preview</h4>
-          <div class="kernel-wrap"><canvas id="kernelCanvas" width="260" height="260"></canvas></div>
-          <div id="kernelMeta" class="kernel-meta">Choose or estimate a blur direction to inspect the motion kernel.</div>
-        </div>
-        <div class="subcard explain">
-          <h4>What the browser lab does</h4>
-          <p><strong>1.</strong> Builds a motion-line PSF from the selected length and angle. <strong>2.</strong> Alternates forward blur, measurement residual, and back-projection. <strong>3.</strong> Applies smoothness and optional extrema-aware detail control. <strong>4.</strong> Uses an artifact guard to reduce unstable updates.</p>
-          <p>The browser tool is intentionally lightweight and dependency-free. It is <strong>not</strong> a JavaScript reproduction of the repository's full multi-scale Python blind-PSF solver. For authoritative experiments use <code>docker compose run --rm test</code>.</p>
-        </div>
-      </div>
-      <div class="footer">Tip: if you see halos, lower the data step or increase smoothness. For long motion blur, estimate the angle first and then tune kernel length. Processing stays entirely on your device.</div>
+      <div class="toolbar"><div class="tags"><span class="tag">BLIND PSF</span><span class="tag">MULTI-SCALE</span><span class="tag green">LOCAL</span><span class="tag amber" id="selectedModeTag">AUTO</span></div><div class="meta" id="imageMeta">No image loaded</div></div>
+      <div class="metrics"><div class="metric"><span>PSF mode</span><strong id="modeMetric">—</strong></div><div class="metric"><span>PSF support</span><strong id="kernelMetric">—</strong></div><div class="metric"><span>Reblur RMSE</span><strong id="residualMetric">—</strong></div><div class="metric"><span>Edge ratio</span><strong id="edgeMetric">—</strong></div><div class="metric"><span>Runtime</span><strong id="runtimeMetric">—</strong></div></div>
+      <div class="viewer" id="viewer"><div class="empty" id="emptyState"><div><strong>Before / after comparison appears here</strong><br><br>Upload a blurred image, estimate or select its PSF, then run the restoration.</div></div><img id="sourceImg" alt="Observed blurred source" class="hidden" /><img id="resultImg" alt="Restored result" class="result hidden" /><div class="split-line hidden" id="splitLine"></div><div class="split-knob hidden" id="splitKnob">↔</div><input class="split hidden" id="splitSlider" type="range" min="0" max="100" value="50" aria-label="Before after comparison" /></div>
+      <div class="lower"><section class="kernel-card"><h3>Estimated / selected PSF</h3><canvas id="kernelCanvas" class="kernel-canvas" width="280" height="280"></canvas><div class="kernel-stats"><div class="ks"><span>Active taps</span><strong id="activeTaps">—</strong></div><div class="ks"><span>Core mass</span><strong id="coreMass">—</strong></div><div class="ks"><span>Anisotropy</span><strong id="anisotropy">—</strong></div><div class="ks"><span>Off-axis</span><strong id="offAxis">—</strong></div></div></section><section class="info-card"><h3>Browser pipeline</h3><div class="algorithm-flow"><div class="flow-step"><b>1 · Pyramid</b>Estimate at reduced scales while preserving full-resolution PSF support.</div><div class="flow-step"><b>2 · Latent image</b>FFT data fidelity + sparse gradients; optional dark-channel projection.</div><div class="flow-step"><b>3 · PSF update</b>Gradient-domain normal-equation estimate, positivity, pruning and recentering.</div><div class="flow-step"><b>4 · Restore</b>Regularized FFT deconvolution plus optional PnP or dual-extreme refinement.</div></div><p><b>Adaptive auto</b> runs both dark-channel-guided and gradient-only blind estimation. It selects the candidate using the observed image only: reblur fidelity, artifact growth and PSF plausibility. <b>Manual line</b>, <b>drawn PSF</b>, and <b>uploaded PSF</b> bypass blind estimation and feed the chosen kernel directly into the same restoration stage.</p><div class="note">The Python implementation remains the authoritative research pipeline. This page mirrors its algorithmic structure in dependency-free JavaScript and uses browser-friendly FFT/optimization approximations so it can run as a static, zero-third-party-dependency browser application. Legacy result/kernel assets are never used here.</div></section></div>
+      <div class="footer">Tip: if a dark-channel estimate creates a branchy or implausible kernel, try <b>Adaptive auto</b> first—it also evaluates the gradient-only candidate. For known camera motion, switch to <b>Manual motion line</b>. For unusual curved motion, draw the PSF directly or upload a measured kernel image.</div>
     </main>
   </div>
 </div>
-
 <canvas id="workCanvas" class="hidden"></canvas>
-<canvas id="outputCanvas" class="hidden"></canvas>
 <script>
 'use strict';
+const requiredIds=['fatalError','appShell','dropZone','fileInput','estimatorMode','estimatorNote','kernelState','kernelSize','kernelSizeOut','manualLineBox','manualDrawBox','manualUploadBox','motionLength','motionLengthOut','motionAngle','motionAngleOut','useLineKernelBtn','manualKernelCanvas','useDrawnKernelBtn','clearDrawnKernelBtn','kernelFileInput','useUploadedKernelBtn','estimationMax','estimationMaxOut','xkIter','xkIterOut','gamma','gammaOut','lambdaDark','lambdaDarkOut','lambdaGrad','lambdaGradOut','darkPatch','darkPatchOut','robustPsf','estimatePsfBtn','restoreState','restoreMethod','restoreMax','restoreMaxOut','regularization','regularizationOut','restoreIter','restoreIterOut','artifactGuard','runBtn','resetBtn','downloadBtn','showKernelBtn','statusText','progressBar','selectedModeTag','imageMeta','modeMetric','kernelMetric','residualMetric','edgeMetric','runtimeMetric','emptyState','sourceImg','resultImg','splitLine','splitKnob','splitSlider','kernelCanvas','activeTaps','coreMass','anisotropy','offAxis','workCanvas'];
+function init(){
+  const E={};for(const id of requiredIds){const node=document.getElementById(id);if(!node){const f=document.getElementById('fatalError');if(f){f.classList.remove('hidden');f.textContent='Browser Lab initialization failed: missing #'+id;}return;}E[id]=node;}
+  const state={image:null,imageUrl:null,kernel:null,kernelSize:0,kernelMode:null,resultUrl:null,busy:false,uploadedKernel:null};
+  const notes={adaptive:'Runs dark-channel-guided and gradient-only blind estimators, then keeps the safer PSF using reblur fidelity, artifact growth and reference-free PSF plausibility.',dark:'Uses sparse local minima plus gradient sparsity in the latent ↔ PSF loop. Best for many natural scenes, but can be less reliable on unusual dark/saturated imagery.',gradient:'Uses sparse gradients only. Useful when the dark-channel prior is weak or produces a branchy PSF.', 'manual-line':'Use this when the blur is approximately straight camera motion and you know its direction/length.', 'manual-draw':'Draw a curved or compound camera-motion path directly.', 'manual-upload':'Use a previously measured or synthetic PSF image.'};
+  const clamp=v=>Math.max(0,Math.min(1,v)),odd=v=>{v=Math.max(3,Math.round(v));return v%2?v:v+1},nextPow2=n=>{let p=1;while(p<n)p<<=1;return p},nextFrame=()=>new Promise(r=>requestAnimationFrame(()=>r()));
+  const reflectIndex=(i,n)=>{if(n<=1)return 0;while(i<0||i>=n){if(i<0)i=-i-1;if(i>=n)i=2*n-i-1}return i};
+  function bindRange(id,out,fmt){const input=E[id],output=E[out],update=()=>output.textContent=fmt(Number(input.value));input.addEventListener('input',update);update()}
+  bindRange('kernelSize','kernelSizeOut',v=>`${v}×${v}`);bindRange('motionLength','motionLengthOut',v=>`${v} px`);bindRange('motionAngle','motionAngleOut',v=>`${v}°`);bindRange('estimationMax','estimationMaxOut',v=>`${v} px`);bindRange('xkIter','xkIterOut',v=>String(v));bindRange('gamma','gammaOut',v=>v.toFixed(2));bindRange('lambdaDark','lambdaDarkOut',v=>v.toFixed(4));bindRange('lambdaGrad','lambdaGradOut',v=>v.toFixed(4));bindRange('darkPatch','darkPatchOut',v=>String(v));bindRange('restoreMax','restoreMaxOut',v=>`${v} px`);bindRange('regularization','regularizationOut',v=>v.toFixed(4));bindRange('restoreIter','restoreIterOut',v=>String(v));
+  function setStatus(text,p=null){E.statusText.textContent=text;if(p!==null)E.progressBar.style.width=Math.max(0,Math.min(100,p))+'%'}
+  function setBusy(v){state.busy=v;E.estimatePsfBtn.disabled=v||!state.image;E.runBtn.disabled=v||!state.image||!state.kernel;E.resetBtn.disabled=v||!state.image;E.downloadBtn.disabled=v||!state.resultUrl;E.showKernelBtn.disabled=v||!state.kernel}
+  function modeUi(){const mode=E.estimatorMode.value;E.estimatorNote.textContent=notes[mode]||'';E.manualLineBox.classList.toggle('hidden',mode!=='manual-line');E.manualDrawBox.classList.toggle('hidden',mode!=='manual-draw');E.manualUploadBox.classList.toggle('hidden',mode!=='manual-upload');E.selectedModeTag.textContent=mode==='adaptive'?'AUTO':mode==='dark'?'DARK':mode==='gradient'?'GRADIENT':mode==='manual-line'?'LINE':mode==='manual-upload'?'UPLOAD':'CUSTOM';E.estimatePsfBtn.textContent=mode.startsWith('manual-')?'Select / use PSF':'Estimate PSF'}E.estimatorMode.addEventListener('change',modeUi);modeUi();
+  async function loadImageFile(file){if(!file||!file.type.startsWith('image/'))return;const url=URL.createObjectURL(file),img=new Image();await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url});if(state.imageUrl)URL.revokeObjectURL(state.imageUrl);state.imageUrl=url;state.image=img;E.sourceImg.src=url;E.sourceImg.classList.remove('hidden');E.emptyState.classList.add('hidden');E.imageMeta.textContent=`${file.name} · ${img.naturalWidth}×${img.naturalHeight}`;state.kernel=null;state.kernelSize=0;state.kernelMode=null;E.kernelState.textContent='No PSF';E.restoreState.textContent='Waiting';clearKernelPreview();setStatus('Image ready. Estimate or select its blur PSF.',0);setBusy(false)}
+  E.fileInput.addEventListener('change',()=>loadImageFile(E.fileInput.files?.[0]));['dragenter','dragover'].forEach(t=>E.dropZone.addEventListener(t,e=>{e.preventDefault();E.dropZone.classList.add('drag')}));['dragleave','drop'].forEach(t=>E.dropZone.addEventListener(t,e=>{e.preventDefault();E.dropZone.classList.remove('drag')}));E.dropZone.addEventListener('drop',e=>loadImageFile(e.dataTransfer.files?.[0]));
+  function imageToArrays(img,maxDim){const scale=Math.min(1,maxDim/Math.max(img.naturalWidth,img.naturalHeight)),w=Math.max(8,Math.round(img.naturalWidth*scale)),h=Math.max(8,Math.round(img.naturalHeight*scale));const c=E.workCanvas;c.width=w;c.height=h;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.clearRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);const d=ctx.getImageData(0,0,w,h).data,rgb=new Float32Array(w*h*3),gray=new Float32Array(w*h);for(let i=0;i<w*h;i++){const r=d[i*4]/255,g=d[i*4+1]/255,b=d[i*4+2]/255;rgb[i*3]=r;rgb[i*3+1]=g;rgb[i*3+2]=b;gray[i]=.298936*r+.587043*g+.114021*b}return{rgb,gray,w,h,scale}}
+  function resizeGray(src,sw,sh,dw,dh){if(sw===dw&&sh===dh)return new Float32Array(src);const out=new Float32Array(dw*dh);for(let y=0;y<dh;y++){const sy=(y+.5)*sh/dh-.5,y0=Math.floor(sy),fy=sy-y0;for(let x=0;x<dw;x++){const sx=(x+.5)*sw/dw-.5,x0=Math.floor(sx),fx=sx-x0;const a=src[reflectIndex(y0,sh)*sw+reflectIndex(x0,sw)],b=src[reflectIndex(y0,sh)*sw+reflectIndex(x0+1,sw)],c=src[reflectIndex(y0+1,sh)*sw+reflectIndex(x0,sw)],d=src[reflectIndex(y0+1,sh)*sw+reflectIndex(x0+1,sw)];out[y*dw+x]=(a*(1-fx)+b*fx)*(1-fy)+(c*(1-fx)+d*fx)*fy}}return out}
 
-(function bootstrap(){
-  const requiredIds=[
-    'errorBanner','fileInput','dropZone','preset','kernelLength','kernelLengthOut','kernelAngle','kernelAngleOut','estimateBtn',
-    'iterations','iterationsOut','dataStep','dataStepOut','smoothness','smoothnessOut','detailStrength','detailStrengthOut',
-    'extremaGuard','artifactGuard','maxDimension','runBtn','resetBtn','downloadBtn','showBtn','status','progressBar','imageMeta',
-    'runtimeMetric','edgeMetric','residualMetric','sizeMetric','viewer','emptyState','sourceImg','resultImg','beforeChip','afterChip',
-    'splitLine','splitKnob','splitSlider','kernelCanvas','kernelMeta','workCanvas','outputCanvas'
-  ];
+  // ---------- small standalone FFT ----------
+  function fft1(re,im,inverse=false){const n=re.length;if((n&(n-1))!==0)throw Error('FFT size must be power of two');for(let i=1,j=0;i<n;i++){let bit=n>>1;for(;j&bit;bit>>=1)j^=bit;j^=bit;if(i<j){[re[i],re[j]]=[re[j],re[i]];[im[i],im[j]]=[im[j],im[i]]}}for(let len=2;len<=n;len<<=1){const ang=2*Math.PI/len*(inverse?1:-1),wr0=Math.cos(ang),wi0=Math.sin(ang);for(let i=0;i<n;i+=len){let wr=1,wi=0;for(let j=0;j<len/2;j++){const u=i+j,v=u+len/2,tr=re[v]*wr-im[v]*wi,ti=re[v]*wi+im[v]*wr;re[v]=re[u]-tr;im[v]=im[u]-ti;re[u]+=tr;im[u]+=ti;const nwr=wr*wr0-wi*wi0;wi=wr*wi0+wi*wr0;wr=nwr}}}if(inverse)for(let i=0;i<n;i++){re[i]/=n;im[i]/=n}}
+  function fft2(re,im,w,h,inverse=false){const rr=new Float64Array(Math.max(w,h)),ii=new Float64Array(Math.max(w,h));for(let y=0;y<h;y++){for(let x=0;x<w;x++){rr[x]=re[y*w+x];ii[x]=im[y*w+x]}fft1(rr.subarray(0,w),ii.subarray(0,w),inverse);for(let x=0;x<w;x++){re[y*w+x]=rr[x];im[y*w+x]=ii[x]}}for(let x=0;x<w;x++){for(let y=0;y<h;y++){rr[y]=re[y*w+x];ii[y]=im[y*w+x]}fft1(rr.subarray(0,h),ii.subarray(0,h),inverse);for(let y=0;y<h;y++){re[y*w+x]=rr[y];im[y*w+x]=ii[y]}}}
+  function kernelOtf(k,ks,w,h){const re=new Float64Array(w*h),im=new Float64Array(w*h),c=(ks-1)>>1;for(let y=0;y<ks;y++)for(let x=0;x<ks;x++){const yy=(y-c+h)%h,xx=(x-c+w)%w;re[yy*w+xx]+=k[y*ks+x]}fft2(re,im,w,h,false);return{re,im}}
+  function blurChannelFFT(src,w,h,k,ks){const pw=nextPow2(w),ph=nextPow2(h),re=new Float64Array(pw*ph),im=new Float64Array(pw*ph);for(let y=0;y<h;y++)for(let x=0;x<w;x++)re[y*pw+x]=src[y*w+x];fft2(re,im,pw,ph,false);const K=kernelOtf(k,ks,pw,ph);for(let i=0;i<re.length;i++){const a=re[i],b=im[i],c=K.re[i],d=K.im[i];re[i]=a*c-b*d;im[i]=a*d+b*c}fft2(re,im,pw,ph,true);const out=new Float32Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++)out[y*w+x]=clamp(re[y*pw+x]);return out}
+  function deconvChannel(src,w,h,k,ks,reg,prior=null,rho=0){const pw=nextPow2(w),ph=nextPow2(h),yr=new Float64Array(pw*ph),yi=new Float64Array(pw*ph);for(let y=0;y<h;y++)for(let x=0;x<w;x++)yr[y*pw+x]=src[y*w+x];fft2(yr,yi,pw,ph,false);const K=kernelOtf(k,ks,pw,ph),zr=prior?new Float64Array(pw*ph):null,zi=prior?new Float64Array(pw*ph):null;if(prior){for(let y=0;y<h;y++)for(let x=0;x<w;x++)zr[y*pw+x]=prior[y*w+x];fft2(zr,zi,pw,ph,false)}for(let y=0;y<ph;y++)for(let x=0;x<pw;x++){const i=y*pw+x,kr=K.re[i],ki=K.im[i],den=kr*kr+ki*ki+reg+rho,rr=(kr*yr[i]+ki*yi[i]+(prior?rho*zr[i]:0))/den,ri=(kr*yi[i]-ki*yr[i]+(prior?rho*zi[i]:0))/den;yr[i]=rr;yi[i]=ri}fft2(yr,yi,pw,ph,true);const out=new Float32Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++)out[y*w+x]=clamp(yr[y*pw+x]);return out}
 
-  function init(){
-    const ui={};
-    const missing=[];
-    for(const id of requiredIds){
-      const node=document.getElementById(id);
-      if(!node) missing.push(id); else ui[id]=node;
-    }
-    if(missing.length){
-      const banner=document.getElementById('errorBanner');
-      if(banner){banner.style.display='block';banner.textContent='Browser Lab initialization error. Missing UI elements: '+missing.join(', ');}
-      console.error('Browser Lab missing elements:',missing);
-      return;
-    }
+  // ---------- PSF primitives / plausibility ----------
+  function normalizeKernel(k){let s=0;for(let i=0;i<k.length;i++){if(!Number.isFinite(k[i])||k[i]<0)k[i]=0;s+=k[i]}if(s<=1e-20){k.fill(0);k[(Math.sqrt(k.length)|0)*((Math.sqrt(k.length)|0)>>1)+((Math.sqrt(k.length)|0)>>1)]=1;return k}for(let i=0;i<k.length;i++)k[i]/=s;return k}
+  function makeLineKernel(size,length,angle){const k=new Float32Array(size*size),c=(size-1)/2,r=angle*Math.PI/180,n=Math.max(2,Math.round(length*4));for(let i=0;i<n;i++){const t=(i/(n-1)-.5)*(length-1),x=c+Math.cos(r)*t,y=c+Math.sin(r)*t,x0=Math.floor(x),y0=Math.floor(y),fx=x-x0,fy=y-y0;for(let dy=0;dy<=1;dy++)for(let dx=0;dx<=1;dx++){const xx=x0+dx,yy=y0+dy;if(xx>=0&&xx<size&&yy>=0&&yy<size)k[yy*size+xx]+=(dx?fx:1-fx)*(dy?fy:1-fy)}}return normalizeKernel(k)}
+  function resizeKernel(src,ss,ds){const out=new Float32Array(ds*ds),scale=ss/ds;for(let y=0;y<ds;y++){const sy=(y+.5)*scale-.5,y0=Math.floor(sy),fy=sy-y0;for(let x=0;x<ds;x++){const sx=(x+.5)*scale-.5,x0=Math.floor(sx),fx=sx-x0;let v=0;for(let dy=0;dy<=1;dy++)for(let dx=0;dx<=1;dx++){const xx=Math.max(0,Math.min(ss-1,x0+dx)),yy=Math.max(0,Math.min(ss-1,y0+dy));v+=src[yy*ss+xx]*(dx?fx:1-fx)*(dy?fy:1-fy)}out[y*ds+x]=Math.max(0,v)}}return normalizeKernel(out)}
+  function centerKernel(k,size){let sx=0,sy=0,s=0;for(let y=0;y<size;y++)for(let x=0;x<size;x++){const v=k[y*size+x];sx+=x*v;sy+=y*v;s+=v}if(s<=0)return k;const dx=Math.round((size-1)/2-sx/s),dy=Math.round((size-1)/2-sy/s),out=new Float32Array(k.length);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<size&&yy>=0&&yy<size)out[yy*size+xx]=k[y*size+x]}return normalizeKernel(out)}
+  function kernelStats(k,size){let peak=0,active=0,mass=0,sx=0,sy=0;for(let i=0;i<k.length;i++){peak=Math.max(peak,k[i]);mass+=k[i];const y=(i/size)|0,x=i-y*size;sx+=x*k[i];sy+=y*k[i]}const cx=sx/mass,cy=sy/mass;let xx=0,yy=0,xy=0;for(let y=0;y<size;y++)for(let x=0;x<size;x++){const v=k[y*size+x];if(v>peak*.04)active++;const dx=x-cx,dy=y-cy;xx+=v*dx*dx;yy+=v*dy*dy;xy+=v*dx*dy}const tr=xx+yy,disc=Math.sqrt(Math.max(0,(xx-yy)*(xx-yy)+4*xy*xy)),l1=(tr+disc)/2,l2=Math.max(1e-12,(tr-disc)/2),anis=Math.sqrt(l1/l2),angle=.5*Math.atan2(2*xy,xx-yy),ca=Math.cos(angle),sa=Math.sin(angle);let off=0,core=0;const width=Math.max(1.7,Math.sqrt(l2)*2.4);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const v=k[y*size+x],dx=x-cx,dy=y-cy,perp=Math.abs(-sa*dx+ca*dy);if(perp>width)off+=v;if(v>peak*.08)core+=v}return{peak,active,core,off,anis,angle:angle*180/Math.PI}}
+  function refineKernel(k,size,robust=true){k=new Float32Array(k);normalizeKernel(k);const st0=kernelStats(k,size),peak=st0.peak,keep=new Uint8Array(k.length);for(let i=0;i<k.length;i++)if(k[i]>=peak*(robust?.018:.05))keep[i]=1;if(robust&&st0.anis>1.8){const c=(size-1)/2,a=st0.angle*Math.PI/180,ca=Math.cos(a),sa=Math.sin(a),width=Math.max(2,size*.06);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const i=y*size+x,dx=x-c,dy=y-c,perp=Math.abs(-sa*dx+ca*dy);if(perp>width&&k[i]<peak*.16)keep[i]=0}}for(let i=0;i<k.length;i++)if(!keep[i])k[i]=0;normalizeKernel(k);return centerKernel(k,size)}
+  function drawKernel(){const c=E.kernelCanvas,ctx=c.getContext('2d'),k=state.kernel,size=state.kernelSize;ctx.clearRect(0,0,c.width,c.height);ctx.fillStyle='#020408';ctx.fillRect(0,0,c.width,c.height);if(!k)return;let peak=0;for(const v of k)peak=Math.max(peak,v);const img=ctx.createImageData(size,size);for(let i=0;i<k.length;i++){const v=Math.pow(k[i]/Math.max(peak,1e-12),.45),q=Math.round(v*255);img.data[i*4]=q;img.data[i*4+1]=q;img.data[i*4+2]=q;img.data[i*4+3]=255}const tmp=document.createElement('canvas');tmp.width=size;tmp.height=size;tmp.getContext('2d').putImageData(img,0,0);ctx.imageSmoothingEnabled=false;ctx.drawImage(tmp,0,0,c.width,c.height);const s=kernelStats(k,size);E.activeTaps.textContent=s.active;E.coreMass.textContent=(s.core*100).toFixed(1)+'%';E.anisotropy.textContent=s.anis.toFixed(2);E.offAxis.textContent=(s.off*100).toFixed(1)+'%'}
+  function clearKernelPreview(){const ctx=E.kernelCanvas.getContext('2d');ctx.fillStyle='#020408';ctx.fillRect(0,0,E.kernelCanvas.width,E.kernelCanvas.height);E.activeTaps.textContent=E.coreMass.textContent=E.anisotropy.textContent=E.offAxis.textContent='—'}
+  function acceptKernel(k,size,label){state.kernel=refineKernel(k,size,E.robustPsf.checked);state.kernelSize=size;state.kernelMode=label;E.kernelState.textContent='Ready';E.restoreState.textContent='PSF ready';E.modeMetric.textContent=label;E.kernelMetric.textContent=`${size}×${size}`;drawKernel();setBusy(false)}
 
-    let originalImage=null;
-    let originalUrl='';
-    let resultUrl='';
-    let sourceName='image';
-    let lastResult=null;
-    let lastKernel=null;
-    let busy=false;
+  // ---------- manual PSFs ----------
+  E.useLineKernelBtn.addEventListener('click',()=>acceptKernel(makeLineKernel(odd(Number(E.kernelSize.value)),Number(E.motionLength.value),Number(E.motionAngle.value)),odd(Number(E.kernelSize.value)),'manual line'));
+  const dc=E.manualKernelCanvas,dctx=dc.getContext('2d');function clearDraw(){dctx.fillStyle='#000';dctx.fillRect(0,0,dc.width,dc.height)}clearDraw();let drawing=false,last=null;function drawPt(e){const r=dc.getBoundingClientRect(),x=(e.clientX-r.left)*dc.width/r.width,y=(e.clientY-r.top)*dc.height/r.height;dctx.strokeStyle='white';dctx.lineWidth=8;dctx.lineCap='round';if(last){dctx.beginPath();dctx.moveTo(last.x,last.y);dctx.lineTo(x,y);dctx.stroke()}last={x,y}}dc.addEventListener('pointerdown',e=>{drawing=true;last=null;dc.setPointerCapture(e.pointerId);drawPt(e)});dc.addEventListener('pointermove',e=>{if(drawing)drawPt(e)});dc.addEventListener('pointerup',()=>{drawing=false;last=null});E.clearDrawnKernelBtn.addEventListener('click',clearDraw);E.useDrawnKernelBtn.addEventListener('click',()=>{const size=odd(Number(E.kernelSize.value)),src=dctx.getImageData(0,0,dc.width,dc.height).data,k=new Float32Array(size*size);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const sx=Math.min(dc.width-1,Math.round((x+.5)*dc.width/size-.5)),sy=Math.min(dc.height-1,Math.round((y+.5)*dc.height/size-.5));k[y*size+x]=src[(sy*dc.width+sx)*4]/255}acceptKernel(k,size,'drawn PSF')});
+  E.kernelFileInput.addEventListener('change',async()=>{const f=E.kernelFileInput.files?.[0];if(!f)return;const u=URL.createObjectURL(f),im=new Image();await new Promise((r,j)=>{im.onload=r;im.onerror=j;im.src=u});const size=odd(Number(E.kernelSize.value)),c=document.createElement('canvas');c.width=size;c.height=size;const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,size,size);x.drawImage(im,0,0,size,size);const d=x.getImageData(0,0,size,size).data,k=new Float32Array(size*size);for(let i=0;i<k.length;i++)k[i]=(d[i*4]+d[i*4+1]+d[i*4+2])/(3*255);state.uploadedKernel=k;URL.revokeObjectURL(u);setStatus('PSF image loaded. Click “Use uploaded PSF”.',0)});E.useUploadedKernelBtn.addEventListener('click',()=>{if(!state.uploadedKernel){setStatus('Choose a PSF image first.',0);return}acceptKernel(state.uploadedKernel,odd(Number(E.kernelSize.value)),'uploaded PSF')});
 
-    const presets={
-      balanced:{length:21,angle:0,iterations:8,step:.65,smooth:.030,detail:.12,extrema:true,guard:true,max:512},
-      long:{length:41,angle:0,iterations:10,step:.58,smooth:.040,detail:.10,extrema:true,guard:true,max:512},
-      night:{length:25,angle:0,iterations:7,step:.50,smooth:.055,detail:.06,extrema:true,guard:true,max:512},
-      detail:{length:15,angle:0,iterations:9,step:.62,smooth:.020,detail:.18,extrema:true,guard:true,max:768}
-    };
+  // ---------- blind PSF estimation ----------
+  function gradients(a,w,h){const gx=new Float32Array(w*h),gy=new Float32Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x;gx[i]=a[y*w+Math.min(w-1,x+1)]-a[i];gy[i]=a[Math.min(h-1,y+1)*w+x]-a[i]}return{gx,gy}}
+  function thresholdGrad(gx,gy,keepFrac=.08){const mags=[];for(let i=0;i<gx.length;i++){const m=gx[i]*gx[i]+gy[i]*gy[i];if(m>0)mags.push(m)}mags.sort((a,b)=>b-a);const thr=mags[Math.min(mags.length-1,Math.max(0,Math.floor(mags.length*keepFrac)))]||0,ox=new Float32Array(gx),oy=new Float32Array(gy);for(let i=0;i<ox.length;i++)if(ox[i]*ox[i]+oy[i]*oy[i]<thr){ox[i]=0;oy[i]=0}return{gx:ox,gy:oy,thr}}
+  function estimatePsfFromGradients(bx,by,lx,ly,w,h,ks){const pw=nextPow2(w),ph=nextPow2(h);function tf(a){const r=new Float64Array(pw*ph),i=new Float64Array(pw*ph);for(let y=0;y<h;y++)for(let x=0;x<w;x++)r[y*pw+x]=a[y*w+x];fft2(r,i,pw,ph,false);return{r,i}}const Bx=tf(bx),By=tf(by),Lx=tf(lx),Ly=tf(ly),R=new Float64Array(pw*ph),I=new Float64Array(pw*ph),weight=2;for(let q=0;q<R.length;q++){const lxr=Lx.r[q],lxi=Lx.i[q],lyr=Ly.r[q],lyi=Ly.i[q],br=Bx.r[q],bi=Bx.i[q],cr=By.r[q],ci=By.i[q],nr=lxr*br+lxi*bi+lyr*cr+lyi*ci,ni=lxr*bi-lxi*br+lyr*ci-lyi*cr,den=lxr*lxr+lxi*lxi+lyr*lyr+lyi*lyi+weight;R[q]=nr/den;I[q]=ni/den}fft2(R,I,pw,ph,true);const k=new Float32Array(ks*ks),c=(ks-1)>>1;for(let y=0;y<ks;y++)for(let x=0;x<ks;x++){const yy=(y-c+ph)%ph,xx=(x-c+pw)%pw;k[y*ks+x]=Math.max(0,R[yy*pw+xx])}return refineKernel(k,ks,E.robustPsf.checked)}
+  function localMinProjection(src,w,h,patch,lambda,beta){const out=new Float32Array(src),r=(patch-1)>>1;for(let y=r;y<h-r;y++)for(let x=r;x<w-r;x++){let mv=1,mi=y*w+x;for(let yy=y-r;yy<=y+r;yy++)for(let xx=x-r;xx<=x+r;xx++){const i=yy*w+xx;if(src[i]<mv){mv=src[i];mi=i}}if(mv*mv<lambda/Math.max(beta,1e-8))out[mi]=0}return out}
+  function latentStep(src,w,h,k,ks,useDark,lambdaDark,lambdaGrad,patch){let s=deconvChannel(src,w,h,k,ks,Math.max(lambdaGrad,.0008));if(useDark&&lambdaDark>0){let beta=Math.max(.03,lambdaDark/.03);for(let t=0;t<2;t++){const u=localMinProjection(s,w,h,patch,lambdaDark,beta);s=deconvChannel(src,w,h,k,ks,Math.max(lambdaGrad,.0008),u,beta);beta*=2}}return s}
+  function scoreKernel(gray,w,h,k,ks,mode){const rest=deconvChannel(gray,w,h,k,ks,Math.max(.002,Number(E.regularization.value))),rb=blurChannelFFT(rest,w,h,k,ks);let rm=0;for(let i=0;i<rb.length;i++){const e=rb[i]-gray[i];rm+=e*e}rm=Math.sqrt(rm/rb.length);const em=edgeEnergyGray(gray,w,h),er=edgeEnergyGray(rest,w,h)/Math.max(em,1e-8),hp=highpassGray(rest,w,h)/Math.max(highpassGray(gray,w,h),1e-5),s=kernelStats(k,ks);const penalty=Math.max(0,er-2.2)*.025+Math.max(0,hp-2.5)*.02+Math.max(0,s.off-.10)*.25+Math.max(0,.6-s.core)*.04;return{value:rm+penalty,rm,edgeRatio:er,hp,stats:s,mode}}
+  async function blindEstimate(mode){const fullKs=odd(Number(E.kernelSize.value)),base=imageToArrays(state.image,Number(E.estimationMax.value)),baseScale=base.scale,estKs=odd(Math.max(7,Math.min(61,Math.round(fullKs*baseScale)))),ratio=Math.sqrt(.5),levels=Math.max(0,Math.floor(Math.log(5/estKs)/Math.log(ratio))),scales=[];for(let i=0;i<=levels;i++)scales.push(ratio**i);let k=null,ks=0,lambdaD=mode==='dark'?Number(E.lambdaDark.value):0,lambdaG=Number(E.lambdaGrad.value),latent=base.gray;const gamma=Number(E.gamma.value),gbase=new Float32Array(base.gray.length);for(let i=0;i<gbase.length;i++)gbase[i]=Math.pow(clamp(base.gray[i]),gamma);for(let li=levels;li>=0;li--){const sc=scales[li],w=Math.max(24,Math.round(base.w*sc)),h=Math.max(24,Math.round(base.h*sc)),y=resizeGray(gbase,base.w,base.h,w,h),target=odd(Math.max(5,Math.min(61,Math.ceil(estKs*sc))));k=k?resizeKernel(k,ks,target):makeLineKernel(target,2,0);ks=target;const bg=gradients(y,w,h),loops=Number(E.xkIter.value);for(let it=0;it<loops;it++){const patch=odd(Math.max(7,Math.min(21,Math.round(Number(E.darkPatch.value)*w/state.image.naturalWidth)));latent=latentStep(y,w,h,k,ks,mode==='dark',lambdaD,lambdaG,patch);const lg=gradients(latent,w,h),tg=thresholdGrad(lg.gx,lg.gy,.08);k=estimatePsfFromGradients(bg.gx,bg.gy,tg.gx,tg.gy,w,h,ks);lambdaD=mode==='dark'?Math.max(.0001,lambdaD/1.1):0;lambdaG=Math.max(.0001,lambdaG/1.1);const done=((levels-li)*loops+it+1)/((levels+1)*loops);setStatus(`${mode==='dark'?'Dark-channel':'Gradient-only'} blind estimation · scale ${levels-li+1}/${levels+1} · iteration ${it+1}/${loops}`,8+done*78);await nextFrame()}k=centerKernel(k,ks)}k=resizeKernel(k,ks,fullKs);k=refineKernel(k,fullKs,E.robustPsf.checked);const scoreData=imageToArrays(state.image,Math.min(256,Number(E.estimationMax.value))),sk=resizeKernel(k,fullKs,odd(Math.max(5,Math.round(fullKs*scoreData.scale))));return{kernel:k,size:fullKs,score:scoreKernel(scoreData.gray,scoreData.w,scoreData.h,sk,odd(Math.max(5,Math.round(fullKs*scoreData.scale))),mode),mode}}
+  E.estimatePsfBtn.addEventListener('click',async()=>{if(!state.image||state.busy)return;const mode=E.estimatorMode.value;if(mode==='manual-line'){E.useLineKernelBtn.click();return}if(mode==='manual-draw'){setStatus('Draw a PSF path, then click “Use drawn PSF”.',0);return}if(mode==='manual-upload'){setStatus('Choose a PSF image, then click “Use uploaded PSF”.',0);return}setBusy(true);const t0=performance.now();try{let best;if(mode==='adaptive'){setStatus('Adaptive auto: estimating dark-channel candidate…',5);await nextFrame();const dark=await blindEstimate('dark');setStatus('Adaptive auto: estimating gradient-only candidate…',48);await nextFrame();const grad=await blindEstimate('gradient');best=dark.score.value<=grad.score.value?dark:grad;E.estimatorNote.textContent=`Adaptive selection: ${best.mode} candidate selected · blind score ${best.score.value.toFixed(4)} (dark ${dark.score.value.toFixed(4)}, gradient ${grad.score.value.toFixed(4)}).`;}else{best=await blindEstimate(mode)}acceptKernel(best.kernel,best.size,mode==='adaptive'?`auto → ${best.mode}`:`blind ${best.mode}`);E.residualMetric.textContent=best.score.rm.toFixed(5);E.edgeMetric.textContent=best.score.edgeRatio.toFixed(2)+'×';E.runtimeMetric.textContent=((performance.now()-t0)/1000).toFixed(1)+' s';setStatus('PSF estimation complete. Run deblur to restore the image.',100)}catch(err){console.error(err);setStatus('PSF estimation failed: '+err.message,0)}finally{setBusy(false)}});
 
-    const bind=(node,event,fn)=>node.addEventListener(event,fn);
-    const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-    const tick=()=>new Promise(resolve=>requestAnimationFrame(()=>resolve()));
-
-    function setStatus(message,progress=null){
-      ui.status.childNodes[0].nodeValue=message+' ';
-      if(progress!==null) ui.progressBar.style.width=clamp(progress,0,100)+'%';
-    }
-
-    function updateOutputs(){
-      ui.kernelLengthOut.textContent=ui.kernelLength.value+' px';
-      ui.kernelAngleOut.textContent=Number(ui.kernelAngle.value).toFixed(0)+'°';
-      ui.iterationsOut.textContent=ui.iterations.value;
-      ui.dataStepOut.textContent=Number(ui.dataStep.value).toFixed(2);
-      ui.smoothnessOut.textContent=Number(ui.smoothness.value).toFixed(3);
-      ui.detailStrengthOut.textContent=Number(ui.detailStrength.value).toFixed(2);
-      drawKernel();
-    }
-
-    function applyPreset(name){
-      if(name==='manual') return;
-      const p=presets[name]||presets.balanced;
-      ui.kernelLength.value=p.length;ui.kernelAngle.value=p.angle;ui.iterations.value=p.iterations;
-      ui.dataStep.value=p.step;ui.smoothness.value=p.smooth;ui.detailStrength.value=p.detail;
-      ui.extremaGuard.checked=p.extrema;ui.artifactGuard.checked=p.guard;ui.maxDimension.value=String(p.max);
-      updateOutputs();
-    }
-
-    function buildKernel(){
-      const length=Math.max(3,Number(ui.kernelLength.value)|0);
-      const angle=Number(ui.kernelAngle.value)*Math.PI/180;
-      const half=(length-1)/2;
-      const map=new Map();
-      for(let i=-half;i<=half;i++){
-        const dx=Math.round(i*Math.cos(angle));
-        const dy=Math.round(i*Math.sin(angle));
-        const key=dx+','+dy;
-        map.set(key,(map.get(key)||0)+1);
-      }
-      const entries=[];let total=0;
-      for(const [key,count] of map){
-        const [dx,dy]=key.split(',').map(Number);entries.push({dx,dy,w:count});total+=count;
-      }
-      for(const e of entries)e.w/=total;
-      return entries;
-    }
-
-    function drawKernel(){
-      const canvas=ui.kernelCanvas,ctx=canvas.getContext('2d');
-      ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#06080c';ctx.fillRect(0,0,canvas.width,canvas.height);
-      const kernel=buildKernel();lastKernel=kernel;
-      const length=Number(ui.kernelLength.value);const scale=Math.min(3.2,(canvas.width*.72)/Math.max(1,length));
-      ctx.save();ctx.translate(canvas.width/2,canvas.height/2);ctx.fillStyle='#fff';ctx.shadowColor='rgba(255,255,255,.75)';ctx.shadowBlur=8;
-      for(const e of kernel){ctx.globalAlpha=clamp(.25+e.w*length*.85,.25,1);ctx.beginPath();ctx.arc(e.dx*scale,e.dy*scale,Math.max(1.8,scale*.75),0,Math.PI*2);ctx.fill();}
-      ctx.restore();ctx.globalAlpha=1;
-      ui.kernelMeta.textContent=`${ui.kernelLength.value} px support · ${Number(ui.kernelAngle.value).toFixed(0)}° · ${kernel.length} discrete samples`;
-    }
-
-    function setButtons(hasImage,hasResult=false){
-      ui.runBtn.disabled=!hasImage||busy;ui.resetBtn.disabled=!hasImage||busy;ui.estimateBtn.disabled=!hasImage||busy;
-      ui.downloadBtn.disabled=!hasResult||busy;ui.showBtn.disabled=!hasResult||busy;
-    }
-
-    async function loadFile(file){
-      if(!file||!file.type.startsWith('image/')){setStatus('Please choose a valid image file.',0);return;}
-      if(originalUrl)URL.revokeObjectURL(originalUrl);if(resultUrl){URL.revokeObjectURL(resultUrl);resultUrl='';}
-      originalUrl=URL.createObjectURL(file);sourceName=(file.name||'image').replace(/\.[^.]+$/,'');
-      const img=new Image();
-      img.onload=()=>{
-        originalImage=img;ui.sourceImg.src=originalUrl;ui.sourceImg.classList.remove('hidden');ui.resultImg.classList.add('hidden');
-        ui.emptyState.classList.add('hidden');toggleComparison(false);ui.imageMeta.textContent=`${file.name} · ${img.naturalWidth}×${img.naturalHeight}`;
-        ui.runtimeMetric.textContent='—';ui.edgeMetric.textContent='—';ui.residualMetric.textContent='—';ui.sizeMetric.textContent='—';
-        lastResult=null;setButtons(true,false);setStatus('Image ready. Estimate the angle or tune the PSF, then run deblur.',0);
-      };
-      img.onerror=()=>setStatus('Could not decode this image.',0);
-      img.src=originalUrl;
-    }
-
-    function workingImageData(maxDim){
-      const w0=originalImage.naturalWidth,h0=originalImage.naturalHeight;
-      const scale=maxDim>0?Math.min(1,maxDim/Math.max(w0,h0)):1;
-      const w=Math.max(2,Math.round(w0*scale)),h=Math.max(2,Math.round(h0*scale));
-      const c=ui.workCanvas;c.width=w;c.height=h;const ctx=c.getContext('2d',{willReadFrequently:true});
-      ctx.clearRect(0,0,w,h);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(originalImage,0,0,w,h);
-      return {image:ctx.getImageData(0,0,w,h),w,h};
-    }
-
-    function rgbaToRgbFloat(imageData){
-      const src=imageData.data,out=new Float32Array((src.length/4)*3);let j=0;
-      for(let i=0;i<src.length;i+=4){out[j++]=src[i]/255;out[j++]=src[i+1]/255;out[j++]=src[i+2]/255;}
-      return out;
-    }
-
-    function rgbToImageData(rgb,w,h){
-      const out=new Uint8ClampedArray(w*h*4);let j=0;
-      for(let i=0;i<rgb.length;i+=3){out[j++]=Math.round(clamp(rgb[i],0,1)*255);out[j++]=Math.round(clamp(rgb[i+1],0,1)*255);out[j++]=Math.round(clamp(rgb[i+2],0,1)*255);out[j++]=255;}
-      return new ImageData(out,w,h);
-    }
-
-    function motionBlur(rgb,w,h,kernel,reverse=false){
-      const out=new Float32Array(rgb.length);const ks=reverse?kernel.map(e=>({dx:-e.dx,dy:-e.dy,w:e.w})):kernel;
-      for(let y=0;y<h;y++){
-        for(let x=0;x<w;x++){
-          const oi=(y*w+x)*3;let r=0,g=0,b=0;
-          for(const e of ks){const xx=clamp(x+e.dx,0,w-1),yy=clamp(y+e.dy,0,h-1),ii=(yy*w+xx)*3;r+=rgb[ii]*e.w;g+=rgb[ii+1]*e.w;b+=rgb[ii+2]*e.w;}
-          out[oi]=r;out[oi+1]=g;out[oi+2]=b;
-        }
-      }
-      return out;
-    }
-
-    function smoothAndDetail(candidate,w,h,smooth,detail,extrema){
-      const out=candidate.slice();
-      for(let y=1;y<h-1;y++){
-        for(let x=1;x<w-1;x++){
-          const i=(y*w+x)*3,il=i-3,ir=i+3,iu=i-w*3,id=i+w*3;
-          const lum=.2126*candidate[i]+.7152*candidate[i+1]+.0722*candidate[i+2];
-          const extremaWeight=extrema?(lum<.18||lum>.82?1:.25):0;
-          for(let c=0;c<3;c++){
-            const center=candidate[i+c];const avg=.25*(candidate[il+c]+candidate[ir+c]+candidate[iu+c]+candidate[id+c]);
-            let v=center+smooth*(avg-center);
-            if(detail>0)v+=detail*extremaWeight*(center-avg);
-            out[i+c]=v;
-          }
-        }
-      }
-      return out;
-    }
-
-    function edgeEnergy(rgb,w,h){
-      let sum=0,n=0;
-      for(let y=1;y<h-1;y+=2){for(let x=1;x<w-1;x+=2){
-        const i=(y*w+x)*3,l=i-3,r=i+3,u=i-w*3,d=i+w*3;
-        const lum=k=>.2126*rgb[k]+.7152*rgb[k+1]+.0722*rgb[k+2];const gx=lum(r)-lum(l),gy=lum(d)-lum(u);sum+=Math.hypot(gx,gy);n++;
-      }}return sum/Math.max(1,n);
-    }
-
-    function clippingRatio(rgb){let n=0;for(let i=0;i<rgb.length;i+=3){if(rgb[i]<.002||rgb[i]>.998||rgb[i+1]<.002||rgb[i+1]>.998||rgb[i+2]<.002||rgb[i+2]>.998)n++;}return n/(rgb.length/3);}
-
-    function rmse(a,b){let s=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];s+=d*d;}return Math.sqrt(s/a.length);}
-
-    async function runDeblur(){
-      if(!originalImage||busy)return;busy=true;setButtons(true,!!lastResult);setStatus('Preparing working image…',3);await tick();
-      try{
-        const start=performance.now();const maxDim=Number(ui.maxDimension.value);const work=workingImageData(maxDim);const source=rgbaToRgbFloat(work.image);const w=work.w,h=work.h;const kernel=buildKernel();
-        let x=source.slice();const iterations=Number(ui.iterations.value);const step=Number(ui.dataStep.value);const smooth=Number(ui.smoothness.value);const detail=Number(ui.detailStrength.value);const extrema=ui.extremaGuard.checked;const guard=ui.artifactGuard.checked;
-        const baseEdge=edgeEnergy(source,w,h);const baseClip=clippingRatio(source);
-        for(let iter=0;iter<iterations;iter++){
-          setStatus(`Restoring · iteration ${iter+1}/${iterations}`,8+76*(iter/iterations));await tick();
-          const blurred=motionBlur(x,w,h,kernel,false);const residual=new Float32Array(source.length);for(let i=0;i<source.length;i++)residual[i]=source[i]-blurred[i];
-          const back=motionBlur(residual,w,h,kernel,true);const candidate=new Float32Array(x.length);for(let i=0;i<x.length;i++)candidate[i]=x[i]+step*back[i];
-          let next=smoothAndDetail(candidate,w,h,smooth,detail,extrema);
-          if(guard){const e=edgeEnergy(next,w,h),clip=clippingRatio(next);if(e>baseEdge*2.35||clip>baseClip+.06){for(let i=0;i<next.length;i++)next[i]=.6*x[i]+.4*next[i];}}
-          for(let i=0;i<next.length;i++)next[i]=clamp(next[i],0,1);x=next;
-        }
-        setStatus('Rendering result…',90);await tick();
-        const outCanvas=ui.outputCanvas;outCanvas.width=w;outCanvas.height=h;outCanvas.getContext('2d').putImageData(rgbToImageData(x,w,h),0,0);
-        if(resultUrl)URL.revokeObjectURL(resultUrl);const blob=await new Promise(resolve=>outCanvas.toBlob(resolve,'image/png',1));resultUrl=URL.createObjectURL(blob);ui.resultImg.src=resultUrl;ui.resultImg.classList.remove('hidden');
-        lastResult={blob,rgb:x,w,h};toggleComparison(true);ui.splitSlider.value='50';updateSplit(50);
-        const reblur=motionBlur(x,w,h,kernel,false);const residual=rmse(source,reblur);const edge=edgeEnergy(x,w,h)/Math.max(baseEdge,1e-9);const runtime=(performance.now()-start)/1000;
-        ui.runtimeMetric.textContent=runtime.toFixed(2)+' s';ui.edgeMetric.textContent=edge.toFixed(2)+'×';ui.residualMetric.textContent=residual.toFixed(4);ui.sizeMetric.textContent=`${w}×${h}`;
-        setStatus('Done. Drag the comparison slider or export the PNG.',100);
-      }catch(err){console.error(err);setStatus('Deblurring failed: '+(err&&err.message?err.message:String(err)),0);}finally{busy=false;setButtons(!!originalImage,!!lastResult);}
-    }
-
-    function toggleComparison(show){
-      const nodes=[ui.splitSlider,ui.splitLine,ui.splitKnob,ui.beforeChip,ui.afterChip];for(const n of nodes)n.classList.toggle('hidden',!show);
-      if(show){ui.sourceImg.classList.remove('hidden');ui.resultImg.classList.remove('hidden');}
-    }
-
-    function updateSplit(value){const v=clamp(Number(value),0,100);ui.resultImg.style.clipPath=`inset(0 ${100-v}% 0 0)`;ui.splitLine.style.left=v+'%';ui.splitKnob.style.left=v+'%';}
-
-    function estimateAngle(){
-      if(!originalImage||busy)return;setStatus('Estimating dominant blur direction…',15);
-      const work=workingImageData(256),rgb=rgbaToRgbFloat(work.image),w=work.w,h=work.h;let sxx=0,syy=0,sxy=0;
-      const lum=i=>.2126*rgb[i]+.7152*rgb[i+1]+.0722*rgb[i+2];
-      for(let y=2;y<h-2;y+=2){for(let x=2;x<w-2;x+=2){const i=(y*w+x)*3;const gx=lum(i+3)-lum(i-3),gy=lum(i+w*3)-lum(i-w*3);const mag=Math.hypot(gx,gy);if(mag<.03)continue;sxx+=gx*gx;syy+=gy*gy;sxy+=gx*gy;}}
-      const edgeAngle=.5*Math.atan2(2*sxy,sxx-syy)*180/Math.PI;let motion=edgeAngle+90;while(motion>90)motion-=180;while(motion<-90)motion+=180;
-      ui.kernelAngle.value=String(Math.round(motion));ui.preset.value='manual';updateOutputs();setStatus(`Estimated motion direction: ${Math.round(motion)}°. Tune kernel length before running.`,0);
-    }
-
-    function reset(){if(!originalImage)return;ui.preset.value='balanced';applyPreset('balanced');lastResult=null;if(resultUrl){URL.revokeObjectURL(resultUrl);resultUrl='';}ui.resultImg.classList.add('hidden');toggleComparison(false);ui.runtimeMetric.textContent='—';ui.edgeMetric.textContent='—';ui.residualMetric.textContent='—';ui.sizeMetric.textContent='—';setButtons(true,false);setStatus('Reset complete. Ready to run.',0);}
-
-    function download(){if(!lastResult)return;const a=document.createElement('a');a.href=resultUrl;a.download=sourceName+'_deblurred.png';document.body.appendChild(a);a.click();a.remove();}
-    function showResult(){if(!lastResult)return;const showing=Number(ui.splitSlider.value)!==100;ui.splitSlider.value=showing?'100':'50';updateSplit(ui.splitSlider.value);ui.showBtn.textContent=showing?'Compare':'Show result';}
-
-    bind(ui.fileInput,'change',e=>loadFile(e.target.files&&e.target.files[0]));
-    bind(ui.dropZone,'dragover',e=>{e.preventDefault();ui.dropZone.classList.add('drag');});
-    bind(ui.dropZone,'dragleave',()=>ui.dropZone.classList.remove('drag'));
-    bind(ui.dropZone,'drop',e=>{e.preventDefault();ui.dropZone.classList.remove('drag');loadFile(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]);});
-    bind(ui.preset,'change',()=>applyPreset(ui.preset.value));
-    for(const node of [ui.kernelLength,ui.kernelAngle,ui.iterations,ui.dataStep,ui.smoothness,ui.detailStrength])bind(node,'input',()=>{ui.preset.value='manual';updateOutputs();});
-    bind(ui.estimateBtn,'click',estimateAngle);bind(ui.runBtn,'click',runDeblur);bind(ui.resetBtn,'click',reset);bind(ui.downloadBtn,'click',download);bind(ui.showBtn,'click',showResult);bind(ui.splitSlider,'input',()=>updateSplit(ui.splitSlider.value));
-
-    applyPreset('balanced');drawKernel();setButtons(false,false);setStatus('Upload an image to begin.',0);
-  }
-
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
-})();
+  // ---------- restoration helpers ----------
+  function edgeEnergyGray(a,w,h){let s=0,n=0;for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=y*w+x,gx=(a[i+1]-a[i-1])*.5,gy=(a[i+w]-a[i-w])*.5;s+=Math.sqrt(gx*gx+gy*gy);n++}return s/Math.max(n,1)}
+  function highpassGray(a,w,h){let s=0,n=0;for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=y*w+x,v=4*a[i]-a[i-1]-a[i+1]-a[i-w]-a[i+w];s+=v*v;n++}return Math.sqrt(s/Math.max(n,1))}
+  function rgbToGray(rgb){const g=new Float32Array(rgb.length/3);for(let i=0;i<g.length;i++)g[i]=.298936*rgb[i*3]+.587043*rgb[i*3+1]+.114021*rgb[i*3+2];return g}
+  function restoreBaseline(rgb,w,h,k,ks,reg){const out=new Float32Array(rgb.length),ch=new Float32Array(w*h);for(let c=0;c<3;c++){for(let i=0;i<ch.length;i++)ch[i]=rgb[i*3+c];const r=deconvChannel(ch,w,h,k,ks,reg);for(let i=0;i<ch.length;i++)out[i*3+c]=clamp(r[i])}return out}
+  function gaussianBlurRGB(rgb,w,h){const tmp=new Float32Array(rgb.length),out=new Float32Array(rgb.length),weights=[.0625,.25,.375,.25,.0625];for(let y=0;y<h;y++)for(let x=0;x<w;x++)for(let c=0;c<3;c++){let v=0;for(let j=-2;j<=2;j++)v+=rgb[(y*w+reflectIndex(x+j,w))*3+c]*weights[j+2];tmp[(y*w+x)*3+c]=v}for(let y=0;y<h;y++)for(let x=0;x<w;x++)for(let c=0;c<3;c++){let v=0;for(let j=-2;j<=2;j++)v+=tmp[(reflectIndex(y+j,h)*w+x)*3+c]*weights[j+2];out[(y*w+x)*3+c]=v}return out}
+  function dataConsistencyRGB(obs,prior,w,h,k,ks,rho,reg){const out=new Float32Array(obs.length),o=new Float32Array(w*h),p=new Float32Array(w*h);for(let c=0;c<3;c++){for(let i=0;i<o.length;i++){o[i]=obs[i*3+c];p[i]=prior[i*3+c]}const r=deconvChannel(o,w,h,k,ks,reg,p,rho);for(let i=0;i<o.length;i++)out[i*3+c]=clamp(r[i])}return out}
+  function seeded(seed){let x=seed|0;return()=>{x=(x*1664525+1013904223)|0;return((x>>>0)+.5)/4294967296}}
+  function gaussianRand(rng){const u=Math.max(rng(),1e-9),v=rng();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+  function annealedPnp(obs,base,w,h,k,ks,steps,reg){let x=new Float32Array(base),rng=seeded(7);for(let t=0;t<steps;t++){const f=t/Math.max(steps-1,1),sigma=.025*Math.pow(.004/.025,f),noisy=new Float32Array(x.length);for(let i=0;i<x.length;i++)noisy[i]=clamp(x[i]+sigma*gaussianRand(rng));const prior=gaussianBlurRGB(noisy,w,h),rho=.05+.10*f;x=dataConsistencyRGB(obs,prior,w,h,k,ks,rho,reg)}return x}
+  function minMaxLocal(gray,w,h,r=3){const mn=new Float32Array(gray.length),mx=new Float32Array(gray.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let a=1,b=0;for(let yy=Math.max(0,y-r);yy<=Math.min(h-1,y+r);yy++)for(let xx=Math.max(0,x-r);xx<=Math.min(w-1,x+r);xx++){const v=gray[yy*w+xx];if(v<a)a=v;if(v>b)b=v}mn[y*w+x]=a;mx[y*w+x]=b}return{mn,mx}}
+  function dualExtreme(obs,base,w,h,k,ks,steps,reg){let x=new Float32Array(base);for(let t=0;t<steps;t++){const gray=rgbToGray(x),mm=minMaxLocal(gray,w,h,2),smooth=gaussianBlurRGB(x,w,h),prior=new Float32Array(x.length);for(let i=0;i<gray.length;i++){const dw=clamp((.10-mm.mn[i])/.10),bw=clamp((mm.mx[i]-.90)/.10),ew=Math.max(dw,bw),gain=.04+.08*ew;for(let c=0;c<3;c++){const j=i*3+c,detail=x[j]-smooth[j];let v=x[j]+gain*detail;v*=1-.01*dw;v=1-(1-v)*(1-.01*bw);prior[j]=clamp(v)}}x=dataConsistencyRGB(obs,prior,w,h,k,ks,.12+.06*t,reg)}return x}
+  function artifactGuard(obs,cand,w,h){if(!E.artifactGuard.checked)return cand;const og=rgbToGray(obs),cg=rgbToGray(cand),edge=edgeEnergyGray(cg,w,h)/Math.max(edgeEnergyGray(og,w,h),.01),hp=highpassGray(cg,w,h)/Math.max(highpassGray(og,w,h),.002);if(edge<2.2&&hp<2.5)return cand;const alpha=Math.min(1,2.0/Math.max(edge,1),2.2/Math.max(hp,1)),out=new Float32Array(cand.length);for(let i=0;i<out.length;i++)out[i]=clamp(obs[i]+alpha*(cand[i]-obs[i]));return out}
+  function arraysToUrl(rgb,w,h){const c=E.workCanvas;c.width=w;c.height=h;const ctx=c.getContext('2d'),img=ctx.createImageData(w,h);for(let i=0;i<w*h;i++){img.data[i*4]=Math.round(255*clamp(rgb[i*3]));img.data[i*4+1]=Math.round(255*clamp(rgb[i*3+1]));img.data[i*4+2]=Math.round(255*clamp(rgb[i*3+2]));img.data[i*4+3]=255}ctx.putImageData(img,0,0);return new Promise(resolve=>c.toBlob(b=>resolve(URL.createObjectURL(b)),'image/png'))}
+  E.runBtn.addEventListener('click',async()=>{if(!state.image||!state.kernel||state.busy)return;setBusy(true);const t0=performance.now();try{setStatus('Preparing image and scaling PSF…',5);await nextFrame();const data=imageToArrays(state.image,Number(E.restoreMax.value)),scaledSize=odd(Math.max(5,Math.round(state.kernelSize*data.scale))),k=resizeKernel(state.kernel,state.kernelSize,scaledSize),reg=Number(E.regularization.value);setStatus('Running regularized baseline restoration…',25);await nextFrame();const baseline=restoreBaseline(data.rgb,data.w,data.h,k,scaledSize,reg);let result=baseline,method=E.restoreMethod.value,passes=Number(E.restoreIter.value);if(method==='pnp'){setStatus('Running annealed PnP refinement…',58);await nextFrame();result=annealedPnp(data.rgb,baseline,data.w,data.h,k,scaledSize,Math.min(passes,5),reg)}else if(method==='extreme'){setStatus('Running dual-extreme refinement…',58);await nextFrame();result=dualExtreme(data.rgb,baseline,data.w,data.h,k,scaledSize,Math.min(passes,4),reg)}setStatus('Applying artifact guard and preparing comparison…',85);await nextFrame();result=artifactGuard(data.rgb,result,data.w,data.h);if(state.resultUrl)URL.revokeObjectURL(state.resultUrl);state.resultUrl=await arraysToUrl(result,data.w,data.h);E.resultImg.src=state.resultUrl;E.resultImg.classList.remove('hidden');E.splitSlider.classList.remove('hidden');E.splitLine.classList.remove('hidden');E.splitKnob.classList.remove('hidden');updateSplit();const rg=rgbToGray(result),og=data.gray;E.edgeMetric.textContent=(edgeEnergyGray(rg,data.w,data.h)/Math.max(edgeEnergyGray(og,data.w,data.h),1e-8)).toFixed(2)+'×';const rb=blurChannelFFT(rg,data.w,data.h,k,scaledSize);let ss=0;for(let i=0;i<rb.length;i++){const e=rb[i]-og[i];ss+=e*e}E.residualMetric.textContent=Math.sqrt(ss/rb.length).toFixed(5);E.runtimeMetric.textContent=((performance.now()-t0)/1000).toFixed(1)+' s';E.restoreState.textContent='Done';E.downloadBtn.disabled=false;setStatus(`Restoration complete · ${method==='baseline'?'Adaptive baseline':method==='pnp'?'Annealed PnP':'Dual-extreme'} · ${data.w}×${data.h}`,100)}catch(err){console.error(err);setStatus('Restoration failed: '+err.message,0)}finally{setBusy(false)}});
+  function updateSplit(){const v=Number(E.splitSlider.value);E.resultImg.style.clipPath=`inset(0 ${100-v}% 0 0)`;E.splitLine.style.left=v+'%';E.splitKnob.style.left=v+'%'}E.splitSlider.addEventListener('input',updateSplit);
+  E.downloadBtn.addEventListener('click',()=>{if(!state.resultUrl)return;const a=document.createElement('a');a.href=state.resultUrl;a.download='adaptive-blind-deblur.png';a.click()});
+  E.resetBtn.addEventListener('click',()=>{state.kernel=null;state.kernelSize=0;state.kernelMode=null;if(state.resultUrl){URL.revokeObjectURL(state.resultUrl);state.resultUrl=null}E.resultImg.classList.add('hidden');E.splitSlider.classList.add('hidden');E.splitLine.classList.add('hidden');E.splitKnob.classList.add('hidden');E.kernelState.textContent='No PSF';E.restoreState.textContent='Waiting';E.modeMetric.textContent='—';E.kernelMetric.textContent='—';E.residualMetric.textContent='—';E.edgeMetric.textContent='—';E.runtimeMetric.textContent='—';clearKernelPreview();setStatus('Reset. Estimate or select a new PSF.',0);setBusy(false)});
+  E.showKernelBtn.addEventListener('click',()=>{if(!state.kernel)return;E.kernelCanvas.scrollIntoView({behavior:'smooth',block:'center'})});
+  E.kernelSize.addEventListener('input',()=>{const max=Number(E.kernelSize.value)-2;if(Number(E.motionLength.value)>max)E.motionLength.value=max;E.motionLength.max=Math.max(3,max);E.motionLengthOut.textContent=E.motionLength.value+' px'});
+  setBusy(false);clearKernelPreview();
+}
+document.addEventListener('DOMContentLoaded',init,{once:true});
 </script>
 </body>
 </html>
