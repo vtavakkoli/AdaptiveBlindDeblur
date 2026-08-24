@@ -1,12 +1,23 @@
 # Adaptive Blind Deblur
 
 [![CI](https://github.com/vtavakkoli/debluring/actions/workflows/ci.yml/badge.svg)](https://github.com/vtavakkoli/debluring/actions/workflows/ci.yml)
+[![Browser Lab](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-2ea44f)](https://vtavakkoli.github.io/debluring/)
 ![Python](https://img.shields.io/badge/Python-3.13%2B-3776AB)
 ![Research](https://img.shields.io/badge/status-experimental%20research-6f42c1)
 
-A reproducible, CPU-friendly blind image deblurring framework with **adaptive PSF estimation**, two guarded restoration refinements, and a **full-quality native-resolution Docker benchmark**.
+A reproducible, CPU-friendly blind image deblurring framework with **adaptive PSF estimation**, two guarded restoration refinements, a **full-quality native-resolution Docker benchmark**, and a standalone browser playground.
 
 This repository is maintained as its **own experimental implementation**. It is not presented as a reproduction or port of an older paper. Files under `dataset/results/` are retained only as **legacy outputs for regression and side-by-side evaluation**; they are never used as restoration targets or algorithm inputs.
+
+## Browser Lab
+
+The repository includes a polished, zero-dependency interactive playground at [`demo/index.html`](demo/index.html). It runs entirely in the browser: users can attach an image, tune a motion PSF, estimate a dominant blur direction, adjust restoration settings, inspect the PSF, compare before/after with a slider, and export the result.
+
+After GitHub Pages is enabled with **Settings → Pages → Source: GitHub Actions**, `.github/workflows/pages.yml` deploys the `demo/` directory on every relevant push to `main`:
+
+**https://vtavakkoli.github.io/debluring/**
+
+The Browser Lab is intentionally an **interactive approximation** for quick experimentation. The Python/Docker pipeline remains the authoritative full-quality implementation.
 
 ## Methods
 
@@ -214,27 +225,34 @@ write_image("extreme.png", extreme)
 ├── src/dark_channel_deblur/       # implementation
 ├── tests/                         # unit + regression tests
 ├── scripts/                       # benchmark/report tooling
+├── demo/
+│   ├── index.html                 # standalone browser playground
+│   └── README.md
 ├── dataset/
 │   ├── image/                     # 23 native benchmark sources
 │   ├── results/                   # legacy evaluation assets
 │   └── benchmark_profiles.json    # explicit quality profiles
 ├── docs/
 │   ├── METHODS.md
-│   └── BENCHMARKING.md
-├── .github/workflows/ci.yml
+│   ├── BENCHMARKING.md
+│   └── PSF_QUALITY.md
+├── .github/workflows/
+│   ├── ci.yml
+│   └── pages.yml                  # deploys demo/ to GitHub Pages
 ├── Dockerfile
 ├── docker-compose.yml
 └── pyproject.toml
 ```
 
-Docker mounts `dataset/` read-only, so benchmark execution cannot rewrite source or legacy assets.
+Docker mounts `dataset/` read-only, so benchmark execution cannot rewrite source or legacy assets. The Docker test image also copies `demo/`, allowing the regression suite to verify that the standalone page ships with the tested repository state.
 
 ## CI
 
-GitHub Actions has two independent gates:
+GitHub Actions has two independent quality gates plus an independent Pages deployment workflow:
 
 1. **Python 3.13 quality gate** — package installation, Ruff, unit/regression tests.
 2. **Full-quality native-resolution benchmark** — all 23 images, all three methods, exact-dimension checks, PSF/profile checks, report generation, and artifact upload.
+3. **GitHub Pages deployment** — publishes the standalone `demo/` folder after changes land on `main`.
 
 The report artifact is published as `deblurring-native-resolution-report` and retained for 30 days.
 
@@ -242,6 +260,8 @@ The report artifact is published as `deblurring-native-resolution-report` and re
 
 - [`docs/METHODS.md`](docs/METHODS.md) — current algorithm design.
 - [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md) — experiment and evaluation contract.
+- [`docs/PSF_QUALITY.md`](docs/PSF_QUALITY.md) — PSF plausibility and support-preservation design.
+- [`demo/README.md`](demo/README.md) — standalone Browser Lab usage and scope.
 - [`dataset/README.md`](dataset/README.md) — dataset/profile layout.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development and PR requirements.
 - [`CHANGELOG.md`](CHANGELOG.md) — notable changes.
