@@ -11,9 +11,20 @@ This repository is maintained as its **own experimental implementation**. It is 
 
 ## Browser Lab
 
-The repository includes a polished, zero-dependency interactive playground at [`demo/index.html`](demo/index.html). It runs entirely in the browser: users can attach an image, tune a motion PSF, estimate a dominant blur direction, adjust restoration settings, inspect the PSF, compare before/after with a slider, and export the result.
+The standalone browser playground is [`docs/index.html`](docs/index.html). It contains all HTML, CSS, and JavaScript in one file and runs locally in the browser with no server, CDN, framework, or backend.
 
-After GitHub Pages is enabled with **Settings → Pages → Source: GitHub Actions**, `.github/workflows/pages.yml` deploys the `demo/` directory on every relevant push to `main`:
+Users can attach an image, tune a motion PSF, estimate a dominant blur direction, adjust restoration settings, inspect the PSF, compare before/after with a slider, and export the result.
+
+To publish it with GitHub Pages, use:
+
+```text
+Settings → Pages
+Source: Deploy from a branch
+Branch: main
+Folder: /docs
+```
+
+The site URL is then:
 
 **https://vtavakkoli.github.io/debluring/**
 
@@ -225,43 +236,38 @@ write_image("extreme.png", extreme)
 ├── src/dark_channel_deblur/       # implementation
 ├── tests/                         # unit + regression tests
 ├── scripts/                       # benchmark/report tooling
-├── demo/
-│   ├── index.html                 # standalone browser playground
-│   └── README.md
 ├── dataset/
 │   ├── image/                     # 23 native benchmark sources
 │   ├── results/                   # legacy evaluation assets
 │   └── benchmark_profiles.json    # explicit quality profiles
 ├── docs/
+│   ├── index.html                 # standalone Browser Lab / GitHub Pages
 │   ├── METHODS.md
 │   ├── BENCHMARKING.md
 │   └── PSF_QUALITY.md
-├── .github/workflows/
-│   ├── ci.yml
-│   └── pages.yml                  # deploys demo/ to GitHub Pages
+├── .github/workflows/ci.yml
 ├── Dockerfile
 ├── docker-compose.yml
 └── pyproject.toml
 ```
 
-Docker mounts `dataset/` read-only, so benchmark execution cannot rewrite source or legacy assets. The Docker test image also copies `demo/`, allowing the regression suite to verify that the standalone page ships with the tested repository state.
+Docker mounts `dataset/` read-only, so benchmark execution cannot rewrite source or legacy assets. The Docker test image also copies `docs/`, allowing the regression suite to verify that the standalone page ships with the tested repository state.
 
 ## CI
 
-GitHub Actions has two independent quality gates plus an independent Pages deployment workflow:
+GitHub Actions has two independent gates:
 
 1. **Python 3.13 quality gate** — package installation, Ruff, unit/regression tests.
 2. **Full-quality native-resolution benchmark** — all 23 images, all three methods, exact-dimension checks, PSF/profile checks, report generation, and artifact upload.
-3. **GitHub Pages deployment** — publishes the standalone `demo/` folder after changes land on `main`.
 
 The report artifact is published as `deblurring-native-resolution-report` and retained for 30 days.
 
 ## Documentation
 
+- [`docs/index.html`](docs/index.html) — standalone Browser Lab and GitHub Pages entry point.
 - [`docs/METHODS.md`](docs/METHODS.md) — current algorithm design.
 - [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md) — experiment and evaluation contract.
 - [`docs/PSF_QUALITY.md`](docs/PSF_QUALITY.md) — PSF plausibility and support-preservation design.
-- [`demo/README.md`](demo/README.md) — standalone Browser Lab usage and scope.
 - [`dataset/README.md`](dataset/README.md) — dataset/profile layout.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development and PR requirements.
 - [`CHANGELOG.md`](CHANGELOG.md) — notable changes.
