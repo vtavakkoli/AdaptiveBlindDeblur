@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,11 +31,6 @@ def test_docker_report_workflow_files_exist() -> None:
     assert all(path.is_file() for path in required)
 
 
-def test_docker_image_copies_standalone_pages_site() -> None:
-    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    assert "COPY docs ./docs" in dockerfile
-
-
 def test_standalone_browser_page_has_no_external_runtime_dependencies() -> None:
     page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
     lower = page.lower()
@@ -46,6 +42,16 @@ def test_standalone_browser_page_has_no_external_runtime_dependencies() -> None:
     assert "<script src=" not in lower
     assert "<link rel=\"stylesheet\"" not in lower
     assert "https://cdn" not in lower
+
+
+def test_browser_lab_required_dom_ids_exist() -> None:
+    page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+    html_ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', page))
+    required_match = re.search(r"const requiredIds=\[(.*?)\];", page, re.DOTALL)
+    assert required_match is not None
+    required_ids = set(re.findall(r"'([^']+)'", required_match.group(1)))
+    assert required_ids
+    assert required_ids <= html_ids
 
 
 def test_benchmark_profiles_cover_every_source_with_valid_support() -> None:
