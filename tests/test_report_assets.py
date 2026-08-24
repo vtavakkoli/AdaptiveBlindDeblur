@@ -30,6 +30,11 @@ def test_docker_report_workflow_files_exist() -> None:
     assert all(path.is_file() for path in required)
 
 
+def test_docker_image_copies_standalone_browser_demo() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "COPY demo ./demo" in dockerfile
+
+
 def test_standalone_browser_demo_has_no_external_runtime_dependencies() -> None:
     demo = (ROOT / "demo" / "index.html").read_text(encoding="utf-8")
     lower = demo.lower()
