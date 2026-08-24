@@ -24,9 +24,23 @@ def test_docker_report_workflow_files_exist() -> None:
         ROOT / "scripts" / "generate_best_report.py",
         ROOT / "scripts" / "generate_matlab_parity_report.py",
         ROOT / "dataset" / "benchmark_profiles.json",
+        ROOT / "demo" / "index.html",
         ROOT / "results" / ".gitkeep",
     ]
     assert all(path.is_file() for path in required)
+
+
+def test_standalone_browser_demo_has_no_external_runtime_dependencies() -> None:
+    demo = (ROOT / "demo" / "index.html").read_text(encoding="utf-8")
+    lower = demo.lower()
+    assert "<script" in lower
+    assert "<style" in lower
+    assert "type=\"file\"" in lower
+    assert "run deblur" in lower
+    assert "export png" in lower
+    assert "<script src=" not in lower
+    assert "<link rel=\"stylesheet\"" not in lower
+    assert "https://cdn" not in lower
 
 
 def test_benchmark_profiles_cover_every_source_with_valid_support() -> None:
