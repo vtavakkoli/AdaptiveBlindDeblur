@@ -21,6 +21,10 @@ COPY tests ./tests
 COPY examples ./examples
 COPY scripts ./scripts
 COPY docs ./docs
-RUN mkdir -p /app/results /app/dataset
+
+# Verify the deployable browser page exists in the runtime image without copying
+# the Dockerfile itself into /app just to satisfy a test.
+RUN test -f /app/docs/index.html \
+    && mkdir -p /app/results /app/dataset
 
 ENTRYPOINT ["dark-channel-deblur"]
