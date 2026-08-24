@@ -19,6 +19,7 @@ from .kernel import (
     valid_gradients,
 )
 from .optimization import l0_deblur_dark_channel, l0_restoration, ringing_artifacts_removal
+from .psf_quality import refine_psf_structure
 from .quality import (
     artifact_diagnostics,
     artifact_severity,
@@ -56,7 +57,6 @@ def _downsample(image: np.ndarray, ratio: float) -> np.ndarray:
     cumulative = np.minimum(cumulative, cumulative[::-1])
     kernel = kernel[cumulative > 0.05].astype(np.float32)
 
-    # The MATLAB code uses conv2(...,'valid') before bilinear interp2 sampling.
     filtered = cv2.sepFilter2D(
         arr,
         cv2.CV_32F,
@@ -108,6 +108,12 @@ def estimate_blur_kernel(
     lambda_dark = cfg.lambda_dark
     lambda_grad = cfg.lambda_grad
 
+    # Strict parity mode retains the original 5%-of-peak / 10%-component pruning.
+    # Robust quality mode carries weaker PSF detail through the pyramid so curved or
+    # compound motion paths are not irreversibly simplified before final validation.
+    psf_peak_fraction = 0.025 if cfg.robust_selection else 0.05
+    component_mass = 0.025 if cfg.robust_selection else 0.10
+
     for scale_idx in range(max_iter, -1, -1):
         size = int(kernel_sizes[scale_idx])
         if kernel is None:
@@ -139,22 +145,29 @@ def estimate_blur_kernel(
                 weight=2.0,
                 psf_shape=kernel.shape,
                 workers=cfg.fft_workers,
+                peak_fraction=psf_peak_fraction,
             )
-            kernel = prune_kernel(kernel)
+            kernel = prune_kernel(kernel, min_component_mass=component_mass)
             lambda_dark = max(lambda_dark / 1.1, 1e-4) if lambda_dark else 0.0
             lambda_grad = max(lambda_grad / 1.1, 1e-4) if lambda_grad else 0.0
 
         kernel = adjust_psf_center(kernel)
 
     assert kernel is not None
-    if cfg.k_thresh > 0 and np.max(kernel) > 0:
-        kernel[kernel < np.max(kernel) / cfg.k_thresh] = 0.0
+    effective_k_thresh = max(cfg.k_thresh, 50.0) if cfg.robust_selection else cfg.k_thresh
+    if effective_k_thresh > 0 and np.max(kernel) > 0:
+        kernel[kernel < np.max(kernel) / effective_k_thresh] = 0.0
     kernel = np.maximum(kernel, 0.0)
     total = float(kernel.sum())
     if total <= 0:
         kernel = init_kernel(cfg.kernel_size)
     else:
         kernel /= total
+
+    if cfg.robust_selection:
+        kernel = refine_psf_structure(kernel)
+        kernel = adjust_psf_center(kernel)
+
     return kernel.astype(np.float32), np.clip(latent, 0.0, 1.0).astype(np.float32)
 
 
@@ -205,9 +218,6 @@ def _restore_saturated(
     if not config.conservative_restoration or not saturation_instability(full_diag):
         return restored.astype(np.float32), float(score), f"whyte_{full_iterations}"
 
-    # Whyte RL is excellent for saturated highlights, but late iterations can amplify
-    # night-scene sensor noise.  Probe earlier checkpoints only after instability is
-    # detected, then keep the latest checkpoint still inside conservative budgets.
     trial_iterations = sorted(
         {
             max(5, int(round(full_iterations * 0.30))),
@@ -275,9 +285,7 @@ def _restore_and_score(
         weight_ring=max(config.weight_ring, 0.65),
     )
     conservative = ringing_artifacts_removal(image, kernel, conservative_cfg)
-    conservative_score, conservative_diag = _candidate_score(
-        image, kernel, conservative, config
-    )
+    conservative_score, conservative_diag = _candidate_score(image, kernel, conservative, config)
     if _prefer_candidate(
         float(best_score),
         diag,
@@ -316,9 +324,6 @@ def _restore_and_score(
             best_name = "tv_safe"
             diag = tv_diag
 
-    # Last-resort guard: if all deconvolution candidates still show the characteristic
-    # long-kernel ripple pattern, attenuate only the deconvolution delta.  This is
-    # preferable to returning a visually unstable image and never uses legacy pixels.
     if ripple_risk(diag, kernel_size=config.kernel_size):
         observed = np.asarray(image, dtype=np.float32)
         for alpha in (0.85, 0.70, 0.55, 0.40):
