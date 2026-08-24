@@ -1,12 +1,34 @@
 # Adaptive Blind Deblur
 
 [![CI](https://github.com/vtavakkoli/debluring/actions/workflows/ci.yml/badge.svg)](https://github.com/vtavakkoli/debluring/actions/workflows/ci.yml)
+[![Browser Lab](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-2ea44f)](https://vtavakkoli.github.io/debluring/)
 ![Python](https://img.shields.io/badge/Python-3.13%2B-3776AB)
 ![Research](https://img.shields.io/badge/status-experimental%20research-6f42c1)
 
-A reproducible, CPU-friendly blind image deblurring framework with **adaptive PSF estimation**, two guarded restoration refinements, and a **full-quality native-resolution Docker benchmark**.
+A reproducible, CPU-friendly blind image deblurring framework with **adaptive PSF estimation**, two guarded restoration refinements, a **full-quality native-resolution Docker benchmark**, and a standalone browser playground.
 
 This repository is maintained as its **own experimental implementation**. It is not presented as a reproduction or port of an older paper. Files under `dataset/results/` are retained only as **legacy outputs for regression and side-by-side evaluation**; they are never used as restoration targets or algorithm inputs.
+
+## Browser Lab
+
+The standalone browser playground is [`docs/index.html`](docs/index.html). It contains all HTML, CSS, and JavaScript in one file and runs locally in the browser with no server, CDN, framework, or backend.
+
+Users can attach an image, tune a motion PSF, estimate a dominant blur direction, adjust restoration settings, inspect the PSF, compare before/after with a slider, and export the result.
+
+To publish it with GitHub Pages, use:
+
+```text
+Settings → Pages
+Source: Deploy from a branch
+Branch: main
+Folder: /docs
+```
+
+The site URL is then:
+
+**https://vtavakkoli.github.io/debluring/**
+
+The Browser Lab is intentionally an **interactive approximation** for quick experimentation. The Python/Docker pipeline remains the authoritative full-quality implementation.
 
 ## Methods
 
@@ -219,15 +241,17 @@ write_image("extreme.png", extreme)
 │   ├── results/                   # legacy evaluation assets
 │   └── benchmark_profiles.json    # explicit quality profiles
 ├── docs/
+│   ├── index.html                 # standalone Browser Lab / GitHub Pages
 │   ├── METHODS.md
-│   └── BENCHMARKING.md
+│   ├── BENCHMARKING.md
+│   └── PSF_QUALITY.md
 ├── .github/workflows/ci.yml
 ├── Dockerfile
 ├── docker-compose.yml
 └── pyproject.toml
 ```
 
-Docker mounts `dataset/` read-only, so benchmark execution cannot rewrite source or legacy assets.
+Docker mounts `dataset/` read-only, so benchmark execution cannot rewrite source or legacy assets. The Docker test image also copies `docs/`, allowing the regression suite to verify that the standalone page ships with the tested repository state.
 
 ## CI
 
@@ -240,8 +264,10 @@ The report artifact is published as `deblurring-native-resolution-report` and re
 
 ## Documentation
 
+- [`docs/index.html`](docs/index.html) — standalone Browser Lab and GitHub Pages entry point.
 - [`docs/METHODS.md`](docs/METHODS.md) — current algorithm design.
 - [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md) — experiment and evaluation contract.
+- [`docs/PSF_QUALITY.md`](docs/PSF_QUALITY.md) — PSF plausibility and support-preservation design.
 - [`dataset/README.md`](dataset/README.md) — dataset/profile layout.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development and PR requirements.
 - [`CHANGELOG.md`](CHANGELOG.md) — notable changes.
