@@ -35,7 +35,7 @@ jobs:
   docker-compose:
     name: Full-quality native-resolution benchmark
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - name: Prepare output directory

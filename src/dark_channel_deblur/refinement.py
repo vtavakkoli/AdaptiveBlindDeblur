@@ -7,7 +7,15 @@ import numpy as np
 from scipy import fft
 
 from .fft_utils import psf2otf
-from .quality import clipping_fraction, edge_energy, highpass_rms, noise_mad, restoration_score
+from .quality import (
+    artifact_diagnostics,
+    clipping_fraction,
+    edge_energy,
+    highpass_rms,
+    noise_mad,
+    restoration_score,
+    ripple_risk,
+)
 
 
 def _pad_for_kernel(image: np.ndarray, kernel: np.ndarray) -> tuple[np.ndarray, int, int]:
@@ -104,6 +112,19 @@ def _artifact_safe_blend(
     y = np.asarray(observed, dtype=np.float32)
     base = np.clip(np.asarray(initial, dtype=np.float32), 0.0, 1.0)
     cand = np.clip(np.asarray(candidate, dtype=np.float32), 0.0, 1.0)
+    kernel_size = int(max(kernel.shape))
+
+    base_diag = artifact_diagnostics(y, base)
+    cand_diag = artifact_diagnostics(y, cand)
+    base_risky = ripple_risk(base_diag, kernel_size=kernel_size)
+    cand_risky = ripple_risk(cand_diag, kernel_size=kernel_size)
+    if cand_risky:
+        return base.copy()
+    if base_risky and (
+        cand_diag.noise_ratio >= base_diag.noise_ratio * 0.95
+        or cand_diag.highpass_ratio >= base_diag.highpass_ratio * 0.95
+    ):
+        return base.copy()
 
     base_reblur = reblur_image(base, kernel, workers=workers)
     cand_reblur = reblur_image(cand, kernel, workers=workers)
@@ -140,6 +161,11 @@ def _artifact_safe_blend(
     alpha = float(np.clip(fidelity_alpha * noise_alpha * highpass_alpha, 0.0, 1.0))
 
     blended = np.clip(base + alpha * (cand - base), 0.0, 1.0).astype(np.float32)
+    if ripple_risk(
+        artifact_diagnostics(y, blended),
+        kernel_size=kernel_size,
+    ):
+        return base.copy()
     blended_reblur = reblur_image(blended, kernel, workers=workers)
     blended_score, _ = restoration_score(y, blended, blended_reblur)
     if blended_score >= base_score:
