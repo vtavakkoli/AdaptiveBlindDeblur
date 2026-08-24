@@ -14,12 +14,13 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install --no-cache-dir ".[dev]"
 
-# Test code and report tooling live in the image. The dataset is mounted
-# read-only by docker-compose so native source/reference files are never copied,
-# resized, or modified during image construction.
+# Test code, report tooling, and the standalone browser lab live in the image.
+# The dataset is mounted read-only by docker-compose so native source/reference
+# files are never copied, resized, or modified during image construction.
 COPY tests ./tests
 COPY examples ./examples
 COPY scripts ./scripts
+COPY demo ./demo
 RUN mkdir -p /app/results /app/dataset
 
 ENTRYPOINT ["dark-channel-deblur"]
