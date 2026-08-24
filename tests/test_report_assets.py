@@ -21,6 +21,7 @@ def test_docker_report_workflow_files_exist() -> None:
     required = [
         ROOT / "scripts" / "run_docker_test.py",
         ROOT / "scripts" / "generate_report.py",
+        ROOT / "scripts" / "generate_best_report.py",
         ROOT / "scripts" / "generate_matlab_parity_report.py",
         ROOT / "dataset" / "benchmark_profiles.json",
         ROOT / "results" / ".gitkeep",
@@ -52,7 +53,10 @@ def test_benchmark_profiles_cover_every_source_with_valid_support() -> None:
     configured_saturated = {name for name, p in profiles.items() if p["saturated"]}
     assert configured_saturated == SATURATED_CASES
 
-    # Regression guards for support mismatches exposed by the full visual audit.
+    # Regression guards for support/mode cases repeatedly exposed by visual audits.
     assert int(profiles["7_patch_use.png"]["kernel_size"]) == 85
     assert int(profiles["26.png"]["kernel_size"]) == 69
     assert int(profiles["blurry_7.png"]["kernel_size"]) == 45
+    assert profiles["blurry_7.png"]["saturated"] is True
+    assert int(profiles["toy.png"]["kernel_size"]) == 101
+    assert int(profiles["wall.png"]["kernel_size"]) == 65
