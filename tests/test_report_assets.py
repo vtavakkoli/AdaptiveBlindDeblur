@@ -54,6 +54,28 @@ def test_browser_lab_required_dom_ids_exist() -> None:
     assert required_ids <= html_ids
 
 
+def test_browser_lab_contains_blind_psf_estimation_and_manual_modes() -> None:
+    page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+    required_features = [
+        'value="adaptive"',
+        'value="dark"',
+        'value="gradient"',
+        'value="manual-line"',
+        'value="manual-draw"',
+        'value="manual-upload"',
+        "function blindEstimate",
+        "function estimatePsfFromGradients",
+        "function localMinProjection",
+        "function latentStep",
+        "function refineKernel",
+        "Adaptive auto",
+        "Annealed PnP",
+        "Dual-extreme",
+    ]
+    for feature in required_features:
+        assert feature in page, feature
+
+
 def test_benchmark_profiles_cover_every_source_with_valid_support() -> None:
     dataset = ROOT / "dataset" / "image"
     source_names = {
