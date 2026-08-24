@@ -58,15 +58,22 @@ def ripple_risk(diag: ArtifactDiagnostics, *, kernel_size: int) -> bool:
     """Detect structured over-deconvolution without using a reference image.
 
     Long blind kernels are especially prone to a false solution that reblurs well
-    but creates repeated contours, zipper texture, and clipped oscillations.  The
-    detector deliberately requires clipping growth together with strong edge/high-
-    pass amplification for large supports, so legitimate strong restorations such
-    as long text motion are not rejected merely for becoming sharper.
+    but creates repeated contours, zipper texture, and clipped oscillations. The
+    detector uses two complementary signatures: clipping plus strong amplification,
+    or severe simultaneous edge/high-pass/noise growth even when later regularization
+    has already reduced clipping. Sharp-but-clean results are deliberately preserved.
     """
     if diag.clipping_growth >= 0.065:
         return True
     if kernel_size >= 65 and diag.clipping_growth >= 0.025:
-        return diag.edge_ratio >= 2.50 or diag.highpass_ratio >= 2.50
+        if diag.edge_ratio >= 2.50 or diag.highpass_ratio >= 2.50:
+            return True
+    if kernel_size >= 65:
+        return (
+            diag.edge_ratio >= 2.60
+            and diag.highpass_ratio >= 3.50
+            and diag.noise_ratio >= 2.00
+        )
     return False
 
 
@@ -74,7 +81,7 @@ def saturation_instability(diag: ArtifactDiagnostics) -> bool:
     """Flag an over-iterated saturated-scene reconstruction.
 
     Saturation-aware Richardson-Lucy can amplify sensor noise and edge halos late
-    in the iteration sequence.  Requiring both edge and noise growth keeps the
+    in the iteration sequence. Requiring both edge and noise growth keeps the
     original full-iteration result for well-behaved saturated scenes.
     """
     return diag.edge_ratio > 2.10 and diag.noise_ratio > 2.20
@@ -156,7 +163,7 @@ def should_retry_kernel(
         return True
     if diag.edge_ratio > 3.0 and diag.highpass_ratio > 4.0:
         return True
-    # Only retry genuinely under-restored long-support solutions.  A previous 1.8x
+    # Only retry genuinely under-restored long-support solutions. A previous 1.8x
     # threshold incorrectly retried strong but clean long-motion cases.
     if kernel_size >= 65 and diag.edge_ratio < 1.15 and blind_score > 0.025:
         return True
