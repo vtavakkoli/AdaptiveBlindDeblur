@@ -97,8 +97,17 @@ def estimate_psf(
     workers: int = -1,
     max_iter: int = 20,
     tol: float = 1e-5,
+    peak_fraction: float = 0.05,
 ) -> np.ndarray:
-    """Estimate a blur PSF with the release's FFT normal equation + CG solve."""
+    """Estimate a blur PSF with the release's FFT normal equation + CG solve.
+
+    ``peak_fraction=0.05`` preserves strict MATLAB-parity behavior. Robust quality
+    mode may request a lower threshold so low-amplitude but meaningful trajectory
+    support survives long enough for structural PSF validation.
+    """
+    if not 0.0 <= peak_fraction < 1.0:
+        raise ValueError("peak_fraction must be in [0, 1)")
+
     lxf = fft.fft2(latent_x, workers=workers)
     lyf = fft.fft2(latent_y, workers=workers)
     bxf = fft.fft2(blurred_x, workers=workers)
@@ -125,8 +134,8 @@ def estimate_psf(
         rsold = rsnew
 
     peak = float(np.max(x))
-    if peak > 0:
-        x[x < peak * 0.05] = 0.0
+    if peak > 0 and peak_fraction > 0:
+        x[x < peak * peak_fraction] = 0.0
     total = float(x.sum())
     if abs(total) <= 1e-12:
         x[:] = 0.0
