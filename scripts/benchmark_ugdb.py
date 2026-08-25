@@ -11,7 +11,6 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
-import cv2
 import numpy as np
 
 from dark_channel_deblur import (
@@ -201,7 +200,7 @@ def main() -> int:
         case_dir = args.output_dir / f"{index:02d}_{source.stem}"
         case_dir.mkdir(parents=True, exist_ok=True)
 
-        (baseline_pack, baseline_runtime) = _run_timed(lambda: deblur_image(observed, cfg))
+        baseline_pack, baseline_runtime = _run_timed(lambda: deblur_image(observed, cfg))
         baseline, base_kernel, _ = baseline_pack
         methods: dict[str, dict[str, Any]] = {}
 
