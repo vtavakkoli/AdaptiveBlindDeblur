@@ -50,7 +50,7 @@ def _gradient_magnitude(image: np.ndarray) -> np.ndarray:
     g = _gray(image)
     gx = cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize=3)
-    return np.sqrt(gx * gx + gy * gy, dtype=np.float32)
+    return np.sqrt(gx * gx + gy * gy).astype(np.float32)
 
 
 def _highpass_magnitude(image: np.ndarray) -> np.ndarray:
@@ -91,10 +91,7 @@ def _conservative_candidate(
     """Create a low-ringing candidate without another blind-kernel solve."""
     base = np.clip(np.asarray(baseline, dtype=np.float32), 0.0, 1.0)
     sigma_color = 0.030 + 0.025 * (1.0 - psf_confidence)
-    if base.ndim == 2:
-        prior = cv2.bilateralFilter(base, d=5, sigmaColor=sigma_color, sigmaSpace=2.0)
-    else:
-        prior = cv2.bilateralFilter(base, d=5, sigmaColor=sigma_color, sigmaSpace=2.0)
+    prior = cv2.bilateralFilter(base, d=5, sigmaColor=sigma_color, sigmaSpace=2.0)
     rho = 0.14 + 0.16 * (1.0 - psf_confidence)
     return _data_consistency(observed, prior, kernel, rho, workers=workers)
 
@@ -113,7 +110,7 @@ def _candidate_maps(
     reblurred = reblur_image(x, kernel, workers=workers)
     diff = reblurred - y
     if diff.ndim == 3:
-        residual = np.sqrt(np.mean(diff * diff, axis=2), dtype=np.float32)
+        residual = np.sqrt(np.mean(diff * diff, axis=2)).astype(np.float32)
     else:
         residual = np.abs(diff).astype(np.float32)
     residual = _smooth_map(residual, sigma=1.5)
@@ -158,7 +155,11 @@ def _soft_consensus(
     residuals = np.stack([item[0] for item in maps], axis=0)
     local_best = np.min(residuals, axis=0)
     local_scale = np.maximum(np.median(residuals, axis=0), 0.004)
-    residual_energy = np.clip((residuals - local_best[None, ...]) / local_scale[None, ...], 0.0, 4.0)
+    residual_energy = np.clip(
+        (residuals - local_best[None, ...]) / local_scale[None, ...],
+        0.0,
+        4.0,
+    )
 
     scores = np.asarray([item[4] for item in maps], dtype=np.float32)
     score_min = float(np.min(scores))
@@ -188,7 +189,7 @@ def _soft_consensus(
     stack = np.stack(energies, axis=0)
     stack -= np.min(stack, axis=0, keepdims=True)
     temperature = 0.42 + 0.20 * uncertainty
-    weights = np.exp(-stack / max(temperature, 1e-4), dtype=np.float32)
+    weights = np.exp(-stack / max(temperature, 1e-4)).astype(np.float32)
     for index in range(weights.shape[0]):
         weights[index] = _smooth_map(weights[index], sigma=2.2)
     weights /= np.maximum(np.sum(weights, axis=0, keepdims=True), 1e-8)
@@ -264,17 +265,19 @@ def residual_guided_adaptive_consensus_refine(
 ) -> np.ndarray | tuple[np.ndarray, RGACDiagnostics]:
     """Residual-Guided Adaptive Consensus (RGAC) restoration.
 
-    RGAC is a deterministic, reference-free multi-prior restoration method rather
-    than a trained model.  It builds four complementary candidates from one blind
-    PSF: the robust baseline, a conservative data-consistent candidate, Annealed
-    PnP, and Dual-Extreme refinement.  Per-pixel confidence maps penalize reblur
-    residual, excess edge/high-frequency energy, and clipping.  Smooth softmax
-    weights fuse the candidates, then a final blur-consistency proximal step and
-    global ripple guard ensure that consensus cannot silently replace a safer
-    baseline with a worse artifact-prone solution.
+    RGAC is a reference-free multi-prior restoration method rather than a trained
+    model. It builds four complementary candidates from one blind PSF: the robust
+    baseline, a conservative data-consistent candidate, Annealed PnP, and
+    Dual-Extreme refinement. Per-pixel confidence maps penalize reblur residual,
+    excess edge/high-frequency energy, and clipping. Smooth softmax weights fuse
+    the candidates, then a final blur-consistency proximal step and global ripple
+    guard ensure that consensus cannot silently replace a safer baseline with a
+    worse artifact-prone solution.
 
     ``annealed`` and ``extreme`` can be supplied by benchmark callers to reuse
     already-computed candidates and avoid duplicate expensive refinement work.
+    Given identical inputs and ``seed``, RGAC is reproducible and uses no learned
+    parameters or legacy-reference pixels.
     """
     y = np.asarray(observed, dtype=np.float32)
     base = np.clip(np.asarray(initial, dtype=np.float32), 0.0, 1.0)
