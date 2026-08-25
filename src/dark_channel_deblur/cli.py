@@ -7,6 +7,7 @@ from pathlib import Path
 import cv2
 
 from .config import DeblurConfig
+from .consensus import residual_guided_adaptive_consensus_refine
 from .deblur import deblur_image
 from .io import read_image, write_image
 from .refinement import annealed_pnp_refine, extreme_channel_refine
@@ -22,11 +23,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--interim-output", type=Path, default=None, help="Optional interim latent PNG")
     parser.add_argument(
         "--method",
-        choices=("baseline", "annealed-pnp", "extreme-channel"),
+        choices=("baseline", "annealed-pnp", "extreme-channel", "rgac"),
         default="baseline",
         help=(
             "baseline=robust blind restoration, annealed-pnp=stochastic guarded refinement, "
-            "extreme-channel=dual-extreme guarded refinement"
+            "extreme-channel=dual-extreme guarded refinement, "
+            "rgac=residual-guided adaptive multi-prior consensus"
         ),
     )
     parser.add_argument("--kernel-size", type=int, default=25, help="Odd PSF support size")
@@ -47,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Preview mode: cap optimization loops and disable robust retries.",
     )
-    parser.add_argument("--seed", type=int, default=0, help="Seed for annealed-pnp candidates")
+    parser.add_argument("--seed", type=int, default=0, help="Seed for stochastic refinement candidates")
     parser.add_argument("--opencv-threads", type=int, default=0, help="0 lets OpenCV decide")
     return parser
 
@@ -88,6 +90,14 @@ def main(argv: list[str] | None = None) -> int:
             image,
             baseline,
             kernel,
+            workers=cfg.fft_workers,
+        )
+    elif args.method == "rgac":
+        result = residual_guided_adaptive_consensus_refine(
+            image,
+            baseline,
+            kernel,
+            seed=args.seed,
             workers=cfg.fft_workers,
         )
     else:

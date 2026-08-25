@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dark-channel-deblur"
-version = "0.4.0"
-description = "Experimental native-resolution blind deblurring with adaptive PSF estimation and artifact-guarded refinements."
+version = "0.5.0"
+description = "Experimental native-resolution blind deblurring with adaptive PSF estimation and artifact-guarded multi-prior restoration."
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [
@@ -44,8 +44,8 @@ dev = [
 dark-channel-deblur = "dark_channel_deblur.cli:main"
 
 [project.urls]
-Repository = "https://github.com/vtavakkoli/debluring"
-Issues = "https://github.com/vtavakkoli/debluring/issues"
+Repository = "https://github.com/vtavakkoli/AdaptiveBlindDeblur"
+Issues = "https://github.com/vtavakkoli/AdaptiveBlindDeblur/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_IMAGES = 23
 SUPPORTED = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
-METHODS = {"baseline", "annealed_pnp", "extreme_channel"}
+METHODS = {"baseline", "annealed_pnp", "extreme_channel", "rgac"}
 SATURATED_CASES = {
     "26.png",
     "IMG_0650_small_patch.png",
@@ -44,7 +44,13 @@ def validate_report(report: dict) -> None:
     if dataset.get("profile_file") != "dataset/benchmark_profiles.json":
         raise RuntimeError("benchmark did not record the explicit profile file")
     if set(report.get("aggregate", {})) != METHODS:
-        raise RuntimeError("report.json does not contain all three methods")
+        raise RuntimeError("report.json does not contain all four methods")
+
+    rgac = report.get("rgac_design", {})
+    if rgac.get("learned_weights") is not False:
+        raise RuntimeError("RGAC must remain a non-learned deterministic method")
+    if rgac.get("legacy_inputs_used") is not False:
+        raise RuntimeError("RGAC must not use legacy assets as inference inputs")
 
     legacy = report.get("legacy_comparison", {})
     if legacy.get("role") != "evaluation_only":
@@ -81,12 +87,25 @@ def validate_report(report: dict) -> None:
         if bool(profile.get("saturated", False)) is not expected_saturated:
             raise RuntimeError(f"incorrect saturation mode for {case.get('name')}")
 
+        rgac_info = case.get("rgac", {})
+        confidence = float(rgac_info.get("psf_confidence", -1.0))
+        if not 0.0 <= confidence <= 1.0:
+            raise RuntimeError(f"invalid RGAC PSF confidence for {case.get('name')}")
+        if set(rgac_info.get("candidate_scores", {})) != {
+            "baseline",
+            "conservative",
+            "annealed_pnp",
+            "extreme_channel",
+        }:
+            raise RuntimeError(f"RGAC candidate diagnostics missing for {case.get('name')}")
+
         case_dir = ROOT / "results" / case["result_dir"]
         required = {
             case["source_copy"],
             "baseline.png",
             "annealed_pnp.png",
             "extreme_channel.png",
+            "rgac.png",
             "interim.png",
             "kernel.png",
         }
@@ -118,7 +137,7 @@ def main() -> int:
     if configured_saturated != SATURATED_CASES:
         raise RuntimeError("benchmark saturation modes do not match the validated dataset configuration")
 
-    print("[2/4] Running Python unit, parity, and artifact-safety regression tests", flush=True)
+    print("[2/4] Running Python unit, parity, artifact-safety, and RGAC regression tests", flush=True)
     subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "tests"],
         cwd=ROOT,
@@ -126,7 +145,7 @@ def main() -> int:
     )
 
     print(
-        "[3/4] Running 23 adaptive full-quality native-resolution images × 3 methods; no resizing is permitted",
+        "[3/4] Running 23 adaptive full-quality native-resolution images × 4 methods; no resizing is permitted",
         flush=True,
     )
     subprocess.run(
@@ -135,7 +154,7 @@ def main() -> int:
         check=True,
     )
 
-    print("[4/4] Verifying report contract, dimensions, PSFs, modes, and generated files", flush=True)
+    print("[4/4] Verifying report contract, dimensions, PSFs, RGAC diagnostics, and generated files", flush=True)
     report_json = ROOT / "results" / "report.json"
     required_reports = [
         ROOT / "results" / "report.html",
@@ -156,7 +175,7 @@ def main() -> int:
         f"{EXPECTED_IMAGES * len(METHODS)} restorations, "
         f"{EXPECTED_IMAGES} independently estimated PSFs, "
         f"{legacy.get('exact_shape_results', 0)} legacy outputs compared. "
-        "Open results/report.html for the complete adaptive comparison.",
+        "Open results/report.html for the complete four-method comparison.",
         flush=True,
     )
     return 0
