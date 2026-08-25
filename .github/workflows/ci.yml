@@ -32,6 +32,37 @@ jobs:
       - name: Unit and regression tests
         run: python -m pytest -q tests
 
+  ugdb-smoke:
+    name: UGDB three-image ablation
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare output directory
+        run: mkdir -p results
+      - name: Build UGDB experiment container
+        run: docker compose build ugdb-experiment
+      - name: Run three-image UGDB ablation
+        run: >-
+          docker compose run --rm ugdb-experiment
+          --limit 3 --steps 2 --kernel-hypotheses 3 --seed 7
+      - name: Verify and print UGDB result
+        run: |
+          test -f results/ugdb_experiment/report.html
+          test -f results/ugdb_experiment/report.json
+          test -f results/ugdb_experiment/SUMMARY.md
+          cat results/ugdb_experiment/SUMMARY.md
+      - name: Publish UGDB summary
+        run: cat results/ugdb_experiment/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload UGDB smoke report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ugdb-ablation-smoke
+          path: results/ugdb_experiment/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6
+
   docker-compose:
     name: Full-quality native-resolution benchmark
     runs-on: ubuntu-latest
