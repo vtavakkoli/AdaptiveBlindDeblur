@@ -145,7 +145,7 @@ def _render_html(report: dict[str, Any]) -> str:
         cases.append(
             '<details class="case"><summary>'
             f"{html.escape(case['name'])} — winner: {html.escape(METHOD_NAMES[case['winner']])}"
-            f"</summary><div class="cards">{''.join(cards)}</div></details>"
+            f'</summary><div class="cards">{"".join(cards)}</div></details>'
         )
 
     css = """
