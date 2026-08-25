@@ -36,44 +36,52 @@ def test_standalone_browser_page_has_no_external_runtime_dependencies() -> None:
     lower = page.lower()
     assert "<script" in lower
     assert "<style" in lower
-    assert "type=\"file\"" in lower
-    assert "run deblur" in lower
-    assert "export png" in lower
+    assert 'type="file"' in lower
+    assert "auto deblur" in lower
+    assert "export method a" in lower
+    assert "export method b" in lower
     assert "<script src=" not in lower
-    assert "<link rel=\"stylesheet\"" not in lower
+    assert '<link rel="stylesheet"' not in lower
     assert "https://cdn" not in lower
 
 
 def test_browser_lab_required_dom_ids_exist() -> None:
     page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
     html_ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', page))
-    required_match = re.search(r"const requiredIds=\[(.*?)\];", page, re.DOTALL)
+    required_match = re.search(r"const REQUIRED_IDS=\[(.*?)\];", page, re.DOTALL)
     assert required_match is not None
     required_ids = set(re.findall(r"'([^']+)'", required_match.group(1)))
     assert required_ids
     assert required_ids <= html_ids
 
 
-def test_browser_lab_contains_blind_psf_estimation_and_manual_modes() -> None:
+def test_browser_lab_is_fully_automatic_and_provides_two_methods() -> None:
     page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
     required_features = [
-        'value="adaptive"',
-        'value="dark"',
-        'value="gradient"',
-        'value="manual-line"',
-        'value="manual-draw"',
-        'value="manual-upload"',
-        "function blindEstimate",
+        "function analyzeScene",
+        "function autoPlan",
+        "function autoEstimate",
+        "function blindCandidate",
         "function estimatePsfFromGradients",
         "function localMinProjection",
         "function latentStep",
-        "function refineKernel",
-        "Adaptive auto",
-        "Annealed PnP",
-        "Dual-extreme",
+        "function chooseBaseline",
+        "function pnpRefine",
+        "function extremaRefine",
+        "Method A · Robust reconstruction",
+        "Method B · Adaptive detail recovery",
+        "Automatic PSF search",
     ]
     for feature in required_features:
         assert feature in page, feature
+
+    # User-facing algorithm parameters must stay hidden: the Auto Lab should
+    # infer these internally instead of exposing tuning controls.
+    assert "<select" not in page.lower()
+    assert 'type="number"' not in page.lower()
+    assert "manual motion line" not in page.lower()
+    assert "draw custom psf" not in page.lower()
+    assert "upload psf image" not in page.lower()
 
 
 def test_benchmark_profiles_cover_every_source_with_valid_support() -> None:
