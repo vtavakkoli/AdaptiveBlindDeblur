@@ -11,6 +11,7 @@ from .consensus import residual_guided_adaptive_consensus_refine
 from .deblur import deblur_image
 from .io import read_image, write_image
 from .refinement import annealed_pnp_refine, extreme_channel_refine
+from .ugdb import ugdb_restore
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -23,12 +24,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--interim-output", type=Path, default=None, help="Optional interim latent PNG")
     parser.add_argument(
         "--method",
-        choices=("baseline", "annealed-pnp", "extreme-channel", "rgac"),
+        choices=(
+            "baseline",
+            "annealed-pnp",
+            "extreme-channel",
+            "rgac",
+            "ugdb-linear",
+            "ugdb-null",
+            "ugdb-kernel",
+            "ugdb-full",
+        ),
         default="baseline",
         help=(
             "baseline=robust blind restoration, annealed-pnp=stochastic guarded refinement, "
-            "extreme-channel=dual-extreme guarded refinement, "
-            "rgac=residual-guided adaptive multi-prior consensus"
+            "extreme-channel=dual-extreme guarded refinement, rgac=residual-guided adaptive "
+            "multi-prior consensus, ugdb-*=uncertainty-guided Gaussian blind-deblurring ablations"
         ),
     )
     parser.add_argument("--kernel-size", type=int, default=25, help="Odd PSF support size")
@@ -50,6 +60,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Preview mode: cap optimization loops and disable robust retries.",
     )
     parser.add_argument("--seed", type=int, default=0, help="Seed for stochastic refinement candidates")
+    parser.add_argument(
+        "--ugdb-steps",
+        type=int,
+        default=4,
+        help="Gaussian/diffusion-surrogate iterations for UGDB methods.",
+    )
+    parser.add_argument(
+        "--ugdb-kernel-hypotheses",
+        type=int,
+        default=4,
+        help="PSF posterior particles for ugdb-kernel and ugdb-full.",
+    )
     parser.add_argument("--opencv-threads", type=int, default=0, help="0 lets OpenCV decide")
     return parser
 
@@ -77,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     image = read_image(args.input)
     start = time.perf_counter()
     baseline, kernel, interim = deblur_image(image, cfg)
+    ugdb_diag = None
     if args.method == "annealed-pnp":
         result = annealed_pnp_refine(
             image,
@@ -100,6 +123,19 @@ def main(argv: list[str] | None = None) -> int:
             seed=args.seed,
             workers=cfg.fft_workers,
         )
+    elif args.method.startswith("ugdb-"):
+        variant = args.method.removeprefix("ugdb-")
+        variant = "nullspace" if variant == "null" else variant
+        result, kernel, ugdb_diag = ugdb_restore(
+            image,
+            baseline,
+            kernel,
+            variant=variant,
+            steps=args.ugdb_steps,
+            kernel_hypotheses=args.ugdb_kernel_hypotheses,
+            seed=args.seed,
+            workers=cfg.fft_workers,
+        )
     else:
         result = baseline
     elapsed = time.perf_counter() - start
@@ -110,6 +146,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.interim_output:
         write_image(args.interim_output, interim)
     print(f"Deblurred {args.input} -> {args.output} using {args.method} in {elapsed:.2f}s")
+    if ugdb_diag is not None:
+        print(
+            "UGDB diagnostics: "
+            f"observable={ugdb_diag.mean_observable_fraction:.3f}, "
+            f"kernel_uncertainty={ugdb_diag.mean_kernel_uncertainty:.5f}, "
+            f"score={ugdb_diag.final_score:.6f}, "
+            f"kernel_update={ugdb_diag.accepted_kernel_update}"
+        )
     return 0
 
 
