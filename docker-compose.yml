@@ -8,9 +8,19 @@ services:
       - ./dataset:/app/dataset:ro
       - ./results:/app/results
 
+  ugdb-experiment:
+    build: .
+    entrypoint: ["python", "scripts/benchmark_ugdb.py"]
+    environment:
+      BENCHMARK_GIT_COMMIT: ${GITHUB_SHA:-local}
+    volumes:
+      - ./dataset:/app/dataset:ro
+      - ./results:/app/results
+
   deblur:
     build: .
     volumes:
       - ./data:/data
-    # Example:
+    # Examples:
     # docker compose run --rm deblur /data/input.png /data/output.png --method annealed-pnp --kernel-size 25
+    # docker compose run --rm deblur /data/input.png /data/output.png --method ugdb-full --kernel-size 25
