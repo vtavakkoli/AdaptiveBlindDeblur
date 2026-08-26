@@ -216,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
         flush=True,
     )
     subprocess.run(
-        [sys.executable, "scripts/generate_best_report.py"],
+        [sys.executable, "scripts/run_five_method_report.py"],
         cwd=ROOT,
         check=True,
     )
