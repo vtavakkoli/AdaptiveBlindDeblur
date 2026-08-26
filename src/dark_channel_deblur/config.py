@@ -34,6 +34,13 @@ class DeblurConfig:
     retry_gradient_only: bool = True
     conservative_restoration: bool = True
 
+    # Experimental PSF model. ``free`` preserves the existing MATLAB-compatible
+    # normal-equation solver. ``motion-trajectory`` constrains the PSF to a thin,
+    # connected trajectory corridor during the kernel optimization itself.
+    kernel_model: str = "free"
+    motion_corridor_radius: int = 2
+    motion_pgd_steps: int = 24
+
     # Optional caps are intended only for previews and small unit tests.
     max_grad_steps: int | None = None
     max_dark_steps: int | None = None
@@ -56,3 +63,9 @@ class DeblurConfig:
             raise ValueError("prescale must be > 0")
         if self.saturation_iterations < 1:
             raise ValueError("saturation_iterations must be >= 1")
+        if self.kernel_model not in {"free", "motion-trajectory"}:
+            raise ValueError("kernel_model must be 'free' or 'motion-trajectory'")
+        if self.motion_corridor_radius < 1:
+            raise ValueError("motion_corridor_radius must be >= 1")
+        if self.motion_pgd_steps < 1:
+            raise ValueError("motion_pgd_steps must be >= 1")
