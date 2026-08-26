@@ -18,6 +18,7 @@ from .kernel import (
     threshold_gradients,
     valid_gradients,
 )
+from .motion_kernel import estimate_motion_constrained_psf
 from .optimization import l0_deblur_dark_channel, l0_restoration, ringing_artifacts_removal
 from .psf_quality import refine_psf_structure
 from .quality import (
@@ -137,16 +138,33 @@ def estimate_blur_kernel(
                 latent = l0_restoration(ys, kernel, lambda_grad, cfg)
 
             lx, ly, threshold = threshold_gradients(latent, size, threshold)
-            kernel = estimate_psf(
-                bx,
-                by,
-                lx,
-                ly,
-                weight=2.0,
-                psf_shape=kernel.shape,
-                workers=cfg.fft_workers,
-                peak_fraction=psf_peak_fraction,
-            )
+            if cfg.kernel_model == "motion-trajectory":
+                # Small pyramid kernels get a one-pixel tube; full-resolution
+                # supports use the configured width. This prevents the prior from
+                # becoming effectively unconstrained at the coarsest scales.
+                corridor_radius = min(cfg.motion_corridor_radius, max(1, size // 8))
+                kernel = estimate_motion_constrained_psf(
+                    bx,
+                    by,
+                    lx,
+                    ly,
+                    weight=2.0,
+                    psf_shape=kernel.shape,
+                    workers=cfg.fft_workers,
+                    projected_iter=cfg.motion_pgd_steps,
+                    corridor_radius=corridor_radius,
+                )
+            else:
+                kernel = estimate_psf(
+                    bx,
+                    by,
+                    lx,
+                    ly,
+                    weight=2.0,
+                    psf_shape=kernel.shape,
+                    workers=cfg.fft_workers,
+                    peak_fraction=psf_peak_fraction,
+                )
             kernel = prune_kernel(kernel, min_component_mass=component_mass)
             lambda_dark = max(lambda_dark / 1.1, 1e-4) if lambda_dark else 0.0
             lambda_grad = max(lambda_grad / 1.1, 1e-4) if lambda_grad else 0.0

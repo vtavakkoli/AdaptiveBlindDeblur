@@ -26,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--method",
         choices=(
             "baseline",
+            "motion-constrained",
             "annealed-pnp",
             "extreme-channel",
             "rgac",
@@ -36,9 +37,10 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         default="baseline",
         help=(
-            "baseline=robust blind restoration, annealed-pnp=stochastic guarded refinement, "
-            "extreme-channel=dual-extreme guarded refinement, rgac=residual-guided adaptive "
-            "multi-prior consensus, ugdb-*=uncertainty-guided Gaussian blind-deblurring ablations"
+            "baseline=robust blind restoration, motion-constrained=trajectory-constrained PSF "
+            "optimization, annealed-pnp=stochastic guarded refinement, extreme-channel=dual-extreme "
+            "guarded refinement, rgac=residual-guided adaptive multi-prior consensus, "
+            "ugdb-*=uncertainty-guided Gaussian blind-deblurring ablations"
         ),
     )
     parser.add_argument("--kernel-size", type=int, default=25, help="Odd PSF support size")
@@ -49,6 +51,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lambda-tv", type=float, default=3e-3)
     parser.add_argument("--lambda-l0", type=float, default=5e-4)
     parser.add_argument("--ring-weight", type=float, default=1.0)
+    parser.add_argument(
+        "--motion-corridor-radius",
+        type=int,
+        default=2,
+        help="Trajectory half-width in PSF pixels for --method motion-constrained.",
+    )
+    parser.add_argument(
+        "--motion-pgd-steps",
+        type=int,
+        default=24,
+        help="Projected-gradient PSF updates per blind alternation for motion-constrained mode.",
+    )
     parser.add_argument(
         "--no-robust",
         action="store_true",
@@ -93,6 +107,9 @@ def main(argv: list[str] | None = None) -> int:
         robust_selection=robust,
         retry_gradient_only=robust,
         conservative_restoration=robust,
+        kernel_model="motion-trajectory" if args.method == "motion-constrained" else "free",
+        motion_corridor_radius=args.motion_corridor_radius,
+        motion_pgd_steps=args.motion_pgd_steps,
         max_grad_steps=12 if args.fast else None,
         max_dark_steps=5 if args.fast else None,
     )
