@@ -29,9 +29,10 @@ This changes the effective number of admissible PSF variables from approximately
 4. Evaluate several low support thresholds and small morphological closing radii.
 5. For every connected candidate component, compute a morphological skeleton.
 6. Dilate that skeleton by the configured corridor radius.
-7. Choose the corridor that captures high warm-start PSF mass while occupying little of the full kernel support.
+7. Reconnect nearby skeleton remnants and retain the single connected corridor carrying the most warm-start PSF mass.
+8. Choose the corridor that captures high warm-start PSF mass while occupying little of the full kernel support.
 
-The result is a connected admissible region that can follow a curved path without permitting isolated 2-D noise far from the trajectory.
+The result is one connected admissible region that can follow a curved path without permitting isolated 2-D noise far from the trajectory.
 
 ## Projected optimization
 
@@ -85,7 +86,7 @@ The user-supplied 23-image benchmark report shows many current kernels with isol
 - current estimated kernels: **13.7 connected components on average**;
 - legacy kernels: **2.35 connected components on average**.
 
-Using the corridor inference alone on those current saved kernels retained about **89% of their PSF mass** while allowing only about **11% of the full kernel area** on average. These figures motivate the reduced search space; they are not a quality claim for the complete deblurring method.
+With the final one-connected-corridor rule, corridor inference on those current saved kernels retained about **92% of their PSF mass** while allowing only about **12% of the full kernel area** on average. These figures motivate the reduced search space; they are not a quality claim for the complete deblurring method.
 
 Legacy kernels are **evaluation only**. They are not used to infer the corridor, tune an image-specific path, or provide optimization targets.
 
