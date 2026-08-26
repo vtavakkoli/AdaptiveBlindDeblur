@@ -91,7 +91,23 @@ def _infer_motion_corridor(
                 skeleton = _skeletonize(component)
                 if not np.any(skeleton):
                     skeleton = component
-                corridor = cv2.dilate(skeleton.astype(np.uint8), corridor_element) > 0
+                corridor = cv2.dilate(skeleton.astype(np.uint8), corridor_element)
+                # Morphological skeletons of a thick connected component can contain
+                # tiny disconnected remnants. Reconnect nearby pieces, then retain
+                # the single component carrying the most warm-start PSF mass so the
+                # admissible set is itself one continuous motion corridor.
+                corridor = cv2.morphologyEx(corridor, cv2.MORPH_CLOSE, corridor_element) > 0
+                corridor_count, corridor_labels = cv2.connectedComponents(
+                    corridor.astype(np.uint8),
+                    connectivity=8,
+                )
+                if corridor_count > 2:
+                    masses = [
+                        float(k[corridor_labels == corridor_label].sum())
+                        for corridor_label in range(1, corridor_count)
+                    ]
+                    corridor = corridor_labels == (1 + int(np.argmax(masses)))
+
                 captured_mass = float(k[corridor].sum())
                 area_fraction = float(np.mean(corridor))
                 score = captured_mass - 0.45 * area_fraction
