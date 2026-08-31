@@ -26,37 +26,48 @@ def test_docker_report_workflow_files_exist() -> None:
         ROOT / "scripts" / "generate_matlab_parity_report.py",
         ROOT / "dataset" / "benchmark_profiles.json",
         ROOT / "docs" / "index.html",
+        ROOT / "docs" / "browser-lab.css",
+        ROOT / "docs" / "browser-lab.js",
         ROOT / "results" / ".gitkeep",
     ]
     assert all(path.is_file() for path in required)
 
 
-def test_standalone_browser_page_has_no_external_runtime_dependencies() -> None:
+def test_browser_page_uses_only_local_runtime_assets() -> None:
     page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+    script = (ROOT / "docs" / "browser-lab.js").read_text(encoding="utf-8")
+    styles = (ROOT / "docs" / "browser-lab.css").read_text(encoding="utf-8")
     lower = page.lower()
-    assert "<script" in lower
-    assert "<style" in lower
+
     assert 'type="file"' in lower
-    assert "auto deblur" in lower
-    assert "export method a" in lower
-    assert "export method b" in lower
-    assert "<script src=" not in lower
-    assert '<link rel="stylesheet"' not in lower
-    assert "https://cdn" not in lower
+    assert "analyze &amp; deblur" in lower
+    assert "export selected result" in lower
+    assert "five deblurring methods" in lower
+    assert "before / after" in lower
+    assert '<script src="browser-lab.js"></script>' in lower
+    assert '<link rel="stylesheet" href="browser-lab.css">' in lower
+
+    for content in (page, script, styles):
+        lowered = content.lower()
+        assert "https://" not in lowered
+        assert "http://" not in lowered
+        assert "https://cdn" not in lowered
 
 
 def test_browser_lab_required_dom_ids_exist() -> None:
     page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+    script = (ROOT / "docs" / "browser-lab.js").read_text(encoding="utf-8")
     html_ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', page))
-    required_match = re.search(r"const REQUIRED_IDS=\[(.*?)\];", page, re.DOTALL)
+    required_match = re.search(r"const REQUIRED_IDS=\[(.*?)\];", script, re.DOTALL)
     assert required_match is not None
     required_ids = set(re.findall(r"'([^']+)'", required_match.group(1)))
     assert required_ids
     assert required_ids <= html_ids
 
 
-def test_browser_lab_is_fully_automatic_and_provides_two_methods() -> None:
+def test_browser_lab_exposes_five_methods_without_parameter_tuning() -> None:
     page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+    script = (ROOT / "docs" / "browser-lab.js").read_text(encoding="utf-8")
     required_features = [
         "function analyzeScene",
         "function autoPlan",
@@ -68,15 +79,36 @@ def test_browser_lab_is_fully_automatic_and_provides_two_methods() -> None:
         "function chooseBaseline",
         "function pnpRefine",
         "function extremaRefine",
-        "Method A · Robust reconstruction",
-        "Method B · Adaptive detail recovery",
-        "Automatic PSF search",
+        "function motionConstrainKernel",
+        "function rgacRefine",
+        "async function restoreFamily",
+        "async function renderMethod",
     ]
     for feature in required_features:
-        assert feature in page, feature
+        assert feature in script, feature
 
-    # User-facing algorithm parameters must stay hidden: the Auto Lab should
-    # infer these internally instead of exposing tuning controls.
+    for label in [
+        "Adaptive Robust Baseline",
+        "Motion-Constrained",
+        "Annealed PnP",
+        "Dual-Extreme",
+        "RGAC",
+        "Automatic PSF search",
+        'id="beforeAfterSlider"',
+    ]:
+        assert label in page, label
+
+    method_values = set(re.findall(r'name="method" value="([^"]+)"', page))
+    assert method_values == {
+        "baseline",
+        "motion_constrained",
+        "annealed_pnp",
+        "extreme_channel",
+        "rgac",
+    }
+
+    # Users may select only the high-level restoration method. Numerical tuning
+    # remains automatic, so there are no exposed kernel/gamma/lambda controls.
     assert "<select" not in page.lower()
     assert 'type="number"' not in page.lower()
     assert "manual motion line" not in page.lower()
@@ -108,7 +140,6 @@ def test_benchmark_profiles_cover_every_source_with_valid_support() -> None:
     configured_saturated = {name for name, p in profiles.items() if p["saturated"]}
     assert configured_saturated == SATURATED_CASES
 
-    # Regression guards for support/mode cases repeatedly exposed by visual audits.
     assert int(profiles["7_patch_use.png"]["kernel_size"]) == 85
     assert int(profiles["26.png"]["kernel_size"]) == 69
     assert int(profiles["blurry_7.png"]["kernel_size"]) == 45
