@@ -116,6 +116,35 @@ def test_browser_lab_exposes_five_methods_without_parameter_tuning() -> None:
     assert "upload psf image" not in page.lower()
 
 
+def test_browser_before_after_reveal_is_directionally_correct_and_draggable() -> None:
+    page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+    script = (ROOT / "docs" / "browser-lab.js").read_text(encoding="utf-8")
+    styles = (ROOT / "docs" / "browser-lab.css").read_text(encoding="utf-8")
+
+    assert "Drag the center handle" in page
+    assert ".viewer .after{clip-path:inset(0 0 0 50%)}" in styles
+    assert "pointer-events:auto;cursor:ew-resize;touch-action:none" in styles
+    assert "function setSplitFromClientX" in script
+    assert "E.splitHandle.addEventListener('pointerdown'" in script
+    assert "E.resultImage.style.clipPath=`inset(0 0 0 ${v}%)`" in script
+
+
+def test_browser_quality_profile_tracks_python_pipeline_more_closely() -> None:
+    script = (ROOT / "docs" / "browser-lab.js").read_text(encoding="utf-8")
+
+    # The browser remains self-contained, but its quality path should mirror
+    # the Python pipeline's stronger blind search and residual-guided consensus.
+    assert "estimationMax=Math.min(640" in script
+    assert "Math.min(640,plan.estimationMax+120)" in script
+    assert "fineIter:5" in script
+    assert "Math.SQRT1_2" in script
+    assert "Math.min(35,Math.round(35*level))" in script
+    assert "function smoothGray" in script
+    assert "function localGradientMap" in script
+    assert "function localHighpassMap" in script
+    assert "projected=restoreRGB" in script
+
+
 def test_benchmark_profiles_cover_every_source_with_valid_support() -> None:
     dataset = ROOT / "dataset" / "image"
     source_names = {
