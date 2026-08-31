@@ -7,6 +7,10 @@ services:
     volumes:
       - ./dataset:/app/dataset:ro
       - ./results:/app/results
+    # Full clean benchmark/report regeneration:
+    # docker compose run --rm test --rebuild
+    # Rebuild the Docker image too:
+    # docker compose run --rm --build test --rebuild
 
   ugdb-experiment:
     build: .
@@ -22,5 +26,6 @@ services:
     volumes:
       - ./data:/data
     # Examples:
+    # docker compose run --rm deblur /data/input.png /data/output.png --method motion-constrained --kernel-size 85
     # docker compose run --rm deblur /data/input.png /data/output.png --method annealed-pnp --kernel-size 25
     # docker compose run --rm deblur /data/input.png /data/output.png --method ugdb-full --kernel-size 25

@@ -66,7 +66,7 @@ jobs:
   docker-compose:
     name: Full-quality native-resolution benchmark
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - name: Prepare output directory
@@ -82,46 +82,25 @@ jobs:
           test -f results/SUMMARY.md
           python - <<'PY'
           import json
+          import sys
           from pathlib import Path
 
-          methods = {"baseline", "annealed_pnp", "extreme_channel"}
-          report = json.loads(Path("results/report.json").read_text())
-          dataset = report["dataset"]
-          legacy = report["legacy_comparison"]
-          assert dataset["image_count"] == 23
-          assert dataset["native_resolution"] is True
-          assert dataset["resizing_applied"] is False
-          assert dataset["profile_file"] == "dataset/benchmark_profiles.json"
-          assert legacy["role"] == "evaluation_only"
-          assert legacy["resampling_permitted"] is False
-          assert len(report["images"]) == 23
-          assert set(report["aggregate"]) == methods
+          # Reuse the exact same five-method validator that the Docker test uses.
+          # This prevents the GitHub Actions contract from drifting when benchmark
+          # methods, per-method PSFs, or winner metadata are extended.
+          sys.path.insert(0, str(Path("scripts").resolve()))
+          from run_docker_test import EXPECTED_IMAGES, METHODS, validate_report
 
-          for case in report["images"]:
-              assert case["native_resolution"] is True
-              assert case["resizing_applied"] is False
-              source_shape = case["source_shape"]
-              for method in methods:
-                  assert case["output_shapes"][method] == source_shape, (case["name"], method)
+          report = json.loads(Path("results/report.json").read_text(encoding="utf-8"))
+          validate_report(report)
 
-              kernel_size = int(case["profile"]["kernel_size"])
-              assert case["kernel_shape"] == [kernel_size, kernel_size]
-
-              directory = Path("results") / case["result_dir"]
-              required = {
-                  case["source_copy"],
-                  "baseline.png",
-                  "annealed_pnp.png",
-                  "extreme_channel.png",
-                  "interim.png",
-                  "kernel.png",
-              }
-              for name in required:
-                  assert (directory / name).is_file(), directory / name
-
+          winner = report["overall_winner"]
+          winner_name = report["methods"][winner]["name"]
           print(
-              "Verified 23 full-quality native-resolution sources, 69 restorations, "
-              "23 independently estimated PSFs, explicit profiles, and zero resizing."
+              f"Verified {EXPECTED_IMAGES} native-resolution sources, "
+              f"{EXPECTED_IMAGES * len(METHODS)} restorations, "
+              f"{EXPECTED_IMAGES * len(METHODS)} PSF visualizations, "
+              f"zero resizing, and overall winner={winner_name}."
           )
           PY
       - name: Publish benchmark summary
