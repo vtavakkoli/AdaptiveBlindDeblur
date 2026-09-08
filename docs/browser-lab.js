@@ -1,70 +1,556 @@
-'use strict';
-const REQUIRED_IDS=['fatal','app','dropZone','fileInput','runBtn','status','progressBar','imageMetric','selectedMethodName','kernelMetric','modeMetric','scoreMetric','runtimeMetric','methodGrid','recommendation','methodTitle','methodDescription','viewer','emptyViewer','originalImage','resultImage','beforeLabel','afterLabel','splitLine','splitHandle','beforeAfterSlider','exportBtn','rmseMetric','edgeMetric','highpassMetric','clipMetric','methodScoreMetric','methodRuntimeMetric','psfCanvas','psfTitle','psfNote','sceneDecision','kernelDecision','methodDecision','workCanvas'];
-const METHOD_META={baseline:{name:'Adaptive Robust Baseline',description:'Conservative blind restoration with automatically selected artifact-safe regularization.'},motion_constrained:{name:'Motion-Constrained',description:'Browser approximation of the motion-trajectory idea: the selected PSF is projected to a thin dominant-motion corridor before restoration.'},annealed_pnp:{name:'Annealed PnP',description:'Annealed plug-and-play refinement with a smoothing prior and repeated blur-model consistency.'},extreme_channel:{name:'Dual-Extreme',description:'Dark/bright local-extrema detail recovery followed by blur-model consistency and artifact guarding.'},rgac:{name:'RGAC',description:'Residual-guided adaptive consensus across complementary browser-side restoration candidates.'}};
-function init(){
-const E={};for(const id of REQUIRED_IDS){E[id]=document.getElementById(id);if(!E[id]){const f=document.getElementById('fatal');if(f){f.classList.remove('hidden');f.textContent=`Browser Lab initialization failed: missing #${id}.`}return}}
-const S={image:null,sourceUrl:null,resultUrl:null,selectedMethod:'rgac',analysis:null,estimate:null,methods:{},busy:false,recommended:null};
-const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));const odd=v=>{let n=Math.max(3,Math.round(v));return n%2?n:n+1};const nextFrame=()=>new Promise(r=>requestAnimationFrame(()=>r()));const reflect=(i,n)=>{if(n<=1)return 0;while(i<0||i>=n)i=i<0?-i:i>=n?2*n-i-2:i;return i};
-function setStatus(text,p=0){E.status.firstChild.textContent=text+' ';E.progressBar.style.width=clamp(p,0,100)+'%'}
-function setBusy(v){S.busy=v;E.runBtn.disabled=v||!S.image;E.runBtn.textContent=v?'Working…':'Analyze & deblur'}
-function releaseUrl(key){if(S[key]){URL.revokeObjectURL(S[key]);S[key]=null}}
-function resetResults(){releaseUrl('resultUrl');S.methods={};S.estimate=null;S.recommended=null;E.resultImage.classList.add('hidden');E.emptyViewer.classList.remove('hidden');for(const el of [E.beforeLabel,E.afterLabel,E.splitLine,E.splitHandle,E.beforeAfterSlider])el.classList.add('hidden');E.exportBtn.disabled=true;['kernelMetric','modeMetric','scoreMetric','runtimeMetric','rmseMetric','edgeMetric','highpassMetric','clipMetric','methodScoreMetric','methodRuntimeMetric'].forEach(id=>E[id].textContent='—');E.recommendation.classList.add('hidden');document.querySelectorAll('.method-option').forEach(x=>x.classList.remove('recommended'));drawKernel(null,0)}
-function loadFile(file){if(!file||!file.type.startsWith('image/')){setStatus('Please choose a PNG, JPEG or WebP image.',0);return}const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{if(S.sourceUrl)URL.revokeObjectURL(S.sourceUrl);S.sourceUrl=url;S.image=img;S.analysis=null;resetResults();E.originalImage.src=url;E.originalImage.classList.remove('hidden');E.emptyViewer.classList.add('hidden');E.imageMetric.textContent=`${img.naturalWidth}×${img.naturalHeight}`;setBusy(false);setStatus(`Image ready. ${METHOD_META[S.selectedMethod].name} is selected; run once, then switch methods instantly.`,0)};img.onerror=()=>{URL.revokeObjectURL(url);setStatus('The image could not be decoded.',0)};img.src=url}
-E.fileInput.addEventListener('change',()=>loadFile(E.fileInput.files?.[0]));for(const ev of ['dragenter','dragover'])E.dropZone.addEventListener(ev,e=>{e.preventDefault();E.dropZone.classList.add('drag')});for(const ev of ['dragleave','drop'])E.dropZone.addEventListener(ev,e=>{e.preventDefault();E.dropZone.classList.remove('drag')});E.dropZone.addEventListener('drop',e=>loadFile(e.dataTransfer?.files?.[0]));
-E.methodGrid.querySelectorAll('input[name="method"]').forEach(input=>input.addEventListener('change',()=>{S.selectedMethod=input.value;E.selectedMethodName.textContent=METHOD_META[S.selectedMethod].name;if(S.methods[S.selectedMethod])renderMethod(S.selectedMethod);else{E.methodTitle.textContent=METHOD_META[S.selectedMethod].name;E.methodDescription.textContent=METHOD_META[S.selectedMethod].description;if(S.image)setStatus(`${METHOD_META[S.selectedMethod].name} selected. Run the analysis to generate the comparison.`,0)}}));
-function imageArrays(img,maxSide){const scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight)),w=Math.max(16,Math.round(img.naturalWidth*scale)),h=Math.max(16,Math.round(img.naturalHeight*scale)),c=E.workCanvas;c.width=w;c.height=h;const x=c.getContext('2d',{willReadFrequently:true});x.clearRect(0,0,w,h);x.drawImage(img,0,0,w,h);const d=x.getImageData(0,0,w,h).data,rgb=new Float32Array(w*h*3),gray=new Float32Array(w*h);for(let i=0;i<w*h;i++){const r=d[i*4]/255,g=d[i*4+1]/255,b=d[i*4+2]/255;rgb[i*3]=r;rgb[i*3+1]=g;rgb[i*3+2]=b;gray[i]=.2989360213*r+.5870430745*g+.1140209043*b}return{w,h,rgb,gray,scale}}
-function resizeGray(a,w,h,nw,nh){const o=new Float32Array(nw*nh);for(let y=0;y<nh;y++){const sy=(y+.5)*h/nh-.5,y0=Math.floor(sy),fy=sy-y0;for(let x=0;x<nw;x++){const sx=(x+.5)*w/nw-.5,x0=Math.floor(sx),fx=sx-x0,p00=a[reflect(y0,h)*w+reflect(x0,w)],p10=a[reflect(y0,h)*w+reflect(x0+1,w)],p01=a[reflect(y0+1,h)*w+reflect(x0,w)],p11=a[reflect(y0+1,h)*w+reflect(x0+1,w)];o[y*nw+x]=(p00*(1-fx)+p10*fx)*(1-fy)+(p01*(1-fx)+p11*fx)*fy}}return o}
-function gradients(a,w,h){const gx=new Float32Array(w*h),gy=new Float32Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x;gx[i]=a[y*w+Math.min(w-1,x+1)]-a[i];gy[i]=a[Math.min(h-1,y+1)*w+x]-a[i]}return{gx,gy}}
-function edgeEnergy(a,w,h){let s=0,n=0;for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=y*w+x,gx=(a[i+1]-a[i-1])*.5,gy=(a[i+w]-a[i-w])*.5;s+=Math.hypot(gx,gy);n++}return s/Math.max(1,n)}
-function highpass(a,w,h){let s=0,n=0;for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=y*w+x,v=4*a[i]-a[i-1]-a[i+1]-a[i-w]-a[i+w];s+=v*v;n++}return Math.sqrt(s/Math.max(1,n))}
-function analyzeScene(data){let sum=0,sum2=0,dark=0,bright=0,sat=0;for(let i=0;i<data.gray.length;i++){const v=data.gray[i];sum+=v;sum2+=v*v;if(v<.08)dark++;if(v>.92)bright++;const r=data.rgb[i*3],g=data.rgb[i*3+1],b=data.rgb[i*3+2];if(Math.max(r,g,b)>.985)sat++}const n=data.gray.length,mean=sum/n,contrast=Math.sqrt(Math.max(0,sum2/n-mean*mean)),edge=edgeEnergy(data.gray,data.w,data.h),hp=highpass(data.gray,data.w,data.h),darkFrac=dark/n,brightFrac=bright/n,satFrac=sat/n,lowLight=mean<.32&&brightFrac<.05,highSaturation=satFrac>.08,lowContrast=contrast<.19;return{mean,contrast,edge,hp,darkFrac,brightFrac,satFrac,lowLight,highSaturation,lowContrast,modeHint:lowLight||highSaturation?'gradient-first':'dark+gradient'}}
-function autoPlan(img,a){const minDim=Math.min(img.naturalWidth,img.naturalHeight),raw=[21,31,45,65,85,105,125].filter(v=>v<Math.max(31,minDim*.28));let supports=raw.length>=4?raw:[21,31,45,65,85].filter(v=>v<minDim*.32);if(a.edge>.085&&a.hp>.14)supports=supports.slice(0,4);else if(a.edge<.03)supports=supports.slice(-4);else if(supports.length>5)supports=supports.slice(1,6);supports=[...new Set(supports.map(odd))];if(supports.length<3)supports=[15,25,35].filter(v=>v<minDim*.35);const gammas=(a.lowContrast||a.brightFrac>.08||a.mean>.56)?[1,2.2]:[1],modes=a.lowLight||a.highSaturation?['gradient','dark']:['dark','gradient'],estimationMax=Math.min(640,Math.max(384,Math.round(Math.sqrt(minDim)*18))),pixels=img.naturalWidth*img.naturalHeight,restoreMax=pixels<=4200000?Math.max(img.naturalWidth,img.naturalHeight):2200;return{supports,gammas,modes,estimationMax,restoreMax,coarseIter:2,fineIter:5}}
-function fft1(re,im,inverse){const n=re.length;for(let i=1,j=0;i<n;i++){let bit=n>>1;for(;j&bit;bit>>=1)j^=bit;j^=bit;if(i<j){[re[i],re[j]]=[re[j],re[i]];[im[i],im[j]]=[im[j],im[i]]}}for(let len=2;len<=n;len<<=1){const ang=2*Math.PI/len*(inverse?1:-1),wr0=Math.cos(ang),wi0=Math.sin(ang);for(let i=0;i<n;i+=len){let wr=1,wi=0;for(let j=0;j<len/2;j++){const u=i+j,v=u+len/2,tr=re[v]*wr-im[v]*wi,ti=re[v]*wi+im[v]*wr;re[v]=re[u]-tr;im[v]=im[u]-ti;re[u]+=tr;im[u]+=ti;const nr=wr*wr0-wi*wi0;wi=wr*wi0+wi*wr0;wr=nr}}}if(inverse)for(let i=0;i<n;i++){re[i]/=n;im[i]/=n}}
-function nextPow2(v){let n=1;while(n<v)n<<=1;return n}
-function fft2(re,im,w,h,inverse){const rr=new Float64Array(Math.max(w,h)),ii=new Float64Array(Math.max(w,h));for(let y=0;y<h;y++){for(let x=0;x<w;x++){rr[x]=re[y*w+x];ii[x]=im[y*w+x]}const r=rr.subarray(0,w),q=ii.subarray(0,w);fft1(r,q,inverse);for(let x=0;x<w;x++){re[y*w+x]=r[x];im[y*w+x]=q[x]}}for(let x=0;x<w;x++){for(let y=0;y<h;y++){rr[y]=re[y*w+x];ii[y]=im[y*w+x]}const r=rr.subarray(0,h),q=ii.subarray(0,h);fft1(r,q,inverse);for(let y=0;y<h;y++){re[y*w+x]=r[y];im[y*w+x]=q[y]}}}
-function kernelSpectrum(k,ks,w,h){const re=new Float64Array(w*h),im=new Float64Array(w*h),c=(ks-1)>>1;for(let y=0;y<ks;y++)for(let x=0;x<ks;x++){const yy=(y-c+h)%h,xx=(x-c+w)%w;re[yy*w+xx]=k[y*ks+x]}fft2(re,im,w,h,false);return{re,im}}
-function deconvChannel(obs,w,h,k,ks,reg,prior=null,rho=0){const pw=nextPow2(w),ph=nextPow2(h),re=new Float64Array(pw*ph),im=new Float64Array(pw*ph);for(let y=0;y<h;y++)for(let x=0;x<w;x++)re[y*pw+x]=obs[y*w+x];fft2(re,im,pw,ph,false);let pr=null,pi=null;if(prior){pr=new Float64Array(pw*ph);pi=new Float64Array(pw*ph);for(let y=0;y<h;y++)for(let x=0;x<w;x++)pr[y*pw+x]=prior[y*w+x];fft2(pr,pi,pw,ph,false)}const H=kernelSpectrum(k,ks,pw,ph);for(let i=0;i<re.length;i++){const hr=H.re[i],hi=H.im[i],den=hr*hr+hi*hi+reg+rho,yr=re[i],yi=im[i];let nr=hr*yr+hi*yi,ni=hr*yi-hi*yr;if(prior){nr+=rho*pr[i];ni+=rho*pi[i]}re[i]=nr/den;im[i]=ni/den}fft2(re,im,pw,ph,true);const out=new Float32Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++)out[y*w+x]=re[y*pw+x];return out}
-function blurChannel(obs,w,h,k,ks){const pw=nextPow2(w),ph=nextPow2(h),re=new Float64Array(pw*ph),im=new Float64Array(pw*ph);for(let y=0;y<h;y++)for(let x=0;x<w;x++)re[y*pw+x]=obs[y*w+x];fft2(re,im,pw,ph,false);const H=kernelSpectrum(k,ks,pw,ph);for(let i=0;i<re.length;i++){const r=re[i],q=im[i];re[i]=r*H.re[i]-q*H.im[i];im[i]=r*H.im[i]+q*H.re[i]}fft2(re,im,pw,ph,true);const out=new Float32Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++)out[y*w+x]=re[y*pw+x];return out}
-function makeInitKernel(size){const k=new Float32Array(size*size),c=(size-1)>>1;k[(c-1)*size+c]=.5;k[c*size+c]=.5;return k}
-function normalizeKernel(k){let s=0;for(let i=0;i<k.length;i++){k[i]=Math.max(0,k[i]);s+=k[i]}if(s<=1e-12)return makeInitKernel(Math.round(Math.sqrt(k.length)));for(let i=0;i<k.length;i++)k[i]/=s;return k}
-function centerKernel(k,size){let sx=0,sy=0,s=0;for(let y=0;y<size;y++)for(let x=0;x<size;x++){const v=k[y*size+x];sx+=x*v;sy+=y*v;s+=v}if(!s)return k;const c=(size-1)/2,dx=Math.round(c-sx/s),dy=Math.round(c-sy/s),o=new Float32Array(k.length);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const nx=x+dx,ny=y+dy;if(nx>=0&&nx<size&&ny>=0&&ny<size)o[ny*size+nx]+=k[y*size+x]}return normalizeKernel(o)}
-function resizeKernel(k,oldSize,newSize){if(oldSize===newSize)return new Float32Array(k);const o=new Float32Array(newSize*newSize);for(let y=0;y<newSize;y++){const sy=(y+.5)*oldSize/newSize-.5,y0=Math.floor(sy),fy=sy-y0;for(let x=0;x<newSize;x++){const sx=(x+.5)*oldSize/newSize-.5,x0=Math.floor(sx),fx=sx-x0;let v=0;for(let yy=0;yy<2;yy++)for(let xx=0;xx<2;xx++){const ox=x0+xx,oy=y0+yy;if(ox>=0&&ox<oldSize&&oy>=0&&oy<oldSize)v+=k[oy*oldSize+ox]*(xx?fx:1-fx)*(yy?fy:1-fy)}o[y*newSize+x]=v}}return normalizeKernel(o)}
-function refineKernel(k,size,aggressive=false){let m=0;for(const v of k)m=Math.max(m,v);const thr=m*(aggressive?.025:.015),o=new Float32Array(k.length);for(let i=0;i<k.length;i++)if(k[i]>=thr)o[i]=k[i];normalizeKernel(o);const c=(size-1)/2;let sxx=0,syy=0,sxy=0;for(let y=0;y<size;y++)for(let x=0;x<size;x++){const v=o[y*size+x],dx=x-c,dy=y-c;sxx+=v*dx*dx;syy+=v*dy*dy;sxy+=v*dx*dy}const angle=.5*Math.atan2(2*sxy,sxx-syy),ca=Math.cos(angle),sa=Math.sin(angle);if(aggressive)for(let y=0;y<size;y++)for(let x=0;x<size;x++){const i=y*size+x,v=o[i],dx=x-c,dy=y-c,along=Math.abs(dx*ca+dy*sa),off=Math.abs(-dx*sa+dy*ca);if(v&&off>Math.max(3,size*.11)&&along>size*.20&&v<m*.08)o[i]=0}return centerKernel(normalizeKernel(o),size)}
-function kernelStats(k,size){let max=0,active=0,core=0,sxx=0,syy=0,sxy=0,off=0,c=(size-1)/2;for(const v of k)max=Math.max(max,v);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const v=k[y*size+x];if(v>max*.03)active++;const dx=x-c,dy=y-c;if(Math.hypot(dx,dy)<size*.22)core+=v;sxx+=v*dx*dx;syy+=v*dy*dy;sxy+=v*dx*dy}const angle=.5*Math.atan2(2*sxy,sxx-syy),ca=Math.cos(angle),sa=Math.sin(angle);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const v=k[y*size+x],dx=x-c,dy=y-c;if(Math.abs(-dx*sa+dy*ca)>Math.max(2,size*.13))off+=v}const tr=sxx+syy,disc=Math.sqrt(Math.max(0,(sxx-syy)**2+4*sxy*sxy)),l1=(tr+disc)/2,l2=(tr-disc)/2;return{active,core,off,anis:l1>1e-9?1-l2/l1:0,angle:angle*180/Math.PI}}
-function drawKernel(k,size){const c=E.psfCanvas,x=c.getContext('2d'),im=x.createImageData(c.width,c.height);if(!k){x.fillStyle='#05070c';x.fillRect(0,0,c.width,c.height);return}let m=0;for(const v of k)m=Math.max(m,v);for(let py=0;py<c.height;py++)for(let px=0;px<c.width;px++){const kx=Math.min(size-1,Math.floor(px*size/c.width)),ky=Math.min(size-1,Math.floor(py*size/c.height)),v=Math.pow(k[ky*size+kx]/Math.max(m,1e-9),.48),j=(py*c.width+px)*4;im.data[j]=Math.round(45+160*v);im.data[j+1]=Math.round(95+150*v);im.data[j+2]=Math.round(150+105*v);im.data[j+3]=255}x.putImageData(im,0,0)}
-function thresholdGrad(gx,gy,keep=.08){const a=[];for(let i=0;i<gx.length;i++){const v=gx[i]*gx[i]+gy[i]*gy[i];if(v>0)a.push(v)}a.sort((x,y)=>y-x);const t=a[Math.min(a.length-1,Math.max(0,Math.floor(a.length*keep)))]||0,ox=new Float32Array(gx),oy=new Float32Array(gy);for(let i=0;i<ox.length;i++)if(ox[i]*ox[i]+oy[i]*oy[i]<t){ox[i]=0;oy[i]=0}return{gx:ox,gy:oy}}
-function localMinProjection(src,w,h,patch,lambda,beta){const out=new Float32Array(src),r=(patch-1)>>1;for(let y=r;y<h-r;y++)for(let x=r;x<w-r;x++){let mv=1,mi=y*w+x;for(let yy=y-r;yy<=y+r;yy++)for(let xx=x-r;xx<=x+r;xx++){const i=yy*w+xx;if(out[i]<mv){mv=out[i];mi=i}}if(mv*mv<lambda/Math.max(beta,1e-8))out[mi]=0}return out}
-function latentStep(src,w,h,k,ks,useDark,lambdaDark,lambdaGrad,patch){let s=deconvChannel(src,w,h,k,ks,Math.max(lambdaGrad,.00055));if(useDark&&lambdaDark>0){let beta=Math.max(.03,lambdaDark/.03);for(let t=0;t<3;t++){const u=localMinProjection(s,w,h,patch,lambdaDark,beta);s=deconvChannel(src,w,h,k,ks,Math.max(lambdaGrad,.00055),u,beta);beta*=2}}return s}
-function estimatePsfFromGradients(bx,by,lx,ly,w,h,ks){const pw=nextPow2(w),ph=nextPow2(h);function trans(a){const r=new Float64Array(pw*ph),i=new Float64Array(pw*ph);for(let y=0;y<h;y++)for(let x=0;x<w;x++)r[y*pw+x]=a[y*w+x];fft2(r,i,pw,ph,false);return{r,i}}const Bx=trans(bx),By=trans(by),Lx=trans(lx),Ly=trans(ly),R=new Float64Array(pw*ph),I=new Float64Array(pw*ph);for(let q=0;q<R.length;q++){const lxr=Lx.r[q],lxi=Lx.i[q],lyr=Ly.r[q],lyi=Ly.i[q],br=Bx.r[q],bi=Bx.i[q],cr=By.r[q],ci=By.i[q],nr=lxr*br+lxi*bi+lyr*cr+lyi*ci,ni=lxr*bi-lxi*br+lyr*ci-lyi*cr,den=lxr*lxr+lxi*lxi+lyr*lyr+lyi*lyi+2;R[q]=nr/den;I[q]=ni/den}fft2(R,I,pw,ph,true);const k=new Float32Array(ks*ks),c=(ks-1)>>1;for(let y=0;y<ks;y++)for(let x=0;x<ks;x++){const yy=(y-c+ph)%ph,xx=(x-c+pw)%pw;k[y*ks+x]=Math.max(0,R[yy*pw+xx])}return refineKernel(k,ks,false)}
-function scoreKernel(gray,w,h,k,ks,fullSupport){const rest=deconvChannel(gray,w,h,k,ks,.003),rb=blurChannel(rest,w,h,k,ks);let ss=0;for(let i=0;i<gray.length;i++){const d=rb[i]-gray[i];ss+=d*d}const rm=Math.sqrt(ss/gray.length),er=edgeEnergy(rest,w,h)/Math.max(edgeEnergy(gray,w,h),1e-6),hp=highpass(rest,w,h)/Math.max(highpass(gray,w,h),1e-5),st=kernelStats(k,ks),artifact=Math.max(0,er-2.15)*.025+Math.max(0,hp-2.5)*.018+Math.max(0,st.off-.13)*.18+Math.max(0,.48-st.core)*.028,complexity=Math.max(0,(fullSupport-65)/50)*.0015;return{value:rm+artifact+complexity,rm,er,hp,st}}
-async function blindCandidate(base,fullSupport,mode,gamma,iterations){const scaledSupport=odd(Math.max(7,Math.min(81,Math.round(fullSupport*base.scale)))),gbase=new Float32Array(base.gray.length);for(let i=0;i<gbase.length;i++)gbase[i]=Math.pow(clamp(base.gray[i]),gamma);const ratio=Math.SQRT1_2,maxLevels=iterations>=5?5:3,scaleLevels=[1];let sc=1;while(scaleLevels.length<maxLevels&&scaledSupport*sc>9){sc*=ratio;scaleLevels.unshift(sc)}let k=null,ks=0,lambdaD=mode==='dark'?.004:0,lambdaG=.004;for(const level of scaleLevels){const w=Math.max(40,Math.round(base.w*level)),h=Math.max(40,Math.round(base.h*level)),y=resizeGray(gbase,base.w,base.h,w,h),target=odd(Math.max(5,Math.round(scaledSupport*level)));k=k?resizeKernel(k,ks,target):makeInitKernel(target);ks=target;const bg=gradients(y,w,h);for(let it=0;it<iterations;it++){const patch=odd(Math.max(9,Math.min(35,Math.round(35*level)))),latent=latentStep(y,w,h,k,ks,mode==='dark',lambdaD,lambdaG,patch),lg=gradients(latent,w,h),tg=thresholdGrad(lg.gx,lg.gy,.08);k=estimatePsfFromGradients(bg.gx,bg.gy,tg.gx,tg.gy,w,h,ks);lambdaD=lambdaD?Math.max(.0001,lambdaD/1.1):0;lambdaG=Math.max(.0001,lambdaG/1.1)}k=centerKernel(k,ks);await nextFrame()}k=resizeKernel(k,ks,scaledSupport);k=refineKernel(k,scaledSupport,true);return{k,size:scaledSupport,fullSupport,mode,gamma,score:scoreKernel(base.gray,base.w,base.h,k,scaledSupport,fullSupport)}}
-async function autoEstimate(plan){const base=imageArrays(S.image,plan.estimationMax),candidates=[],total=plan.supports.length*plan.gammas.length*plan.modes.length;let done=0;for(const support of plan.supports)for(const gamma of plan.gammas)for(const mode of plan.modes){setStatus(`Searching PSF · ${support}×${support} · ${mode==='dark'?'dark-channel':'gradient-only'} · γ ${gamma}`,8+52*done/Math.max(1,total));await nextFrame();try{candidates.push(await blindCandidate(base,support,mode,gamma,plan.coarseIter))}catch(err){console.warn('candidate failed',support,mode,gamma,err)}done++}if(!candidates.length)throw new Error('No PSF candidate could be estimated.');candidates.sort((a,b)=>a.score.value-b.score.value);const coarse=candidates[0];setStatus(`Refining best PSF candidate · ${coarse.fullSupport}×${coarse.fullSupport} · ${coarse.mode}`,63);await nextFrame();const fineBase=imageArrays(S.image,Math.min(640,plan.estimationMax+120)),fine=await blindCandidate(fineBase,coarse.fullSupport,coarse.mode,coarse.gamma,plan.fineIter),fullKernel=resizeKernel(fine.k,fine.size,fine.fullSupport);return{...fine,k:refineKernel(fullKernel,fine.fullSupport,true),size:fine.fullSupport,candidateCount:candidates.length,runnerUp:candidates[1]||null}}
-function rgbToGray(rgb){const g=new Float32Array(rgb.length/3);for(let i=0;i<g.length;i++)g[i]=.2989360213*rgb[i*3]+.5870430745*rgb[i*3+1]+.1140209043*rgb[i*3+2];return g}
-function restoreRGB(rgb,w,h,k,ks,reg,prior=null,rho=0){const out=new Float32Array(rgb.length),obs=new Float32Array(w*h),pr=new Float32Array(w*h);for(let c=0;c<3;c++){for(let i=0;i<obs.length;i++){obs[i]=rgb[i*3+c];if(prior)pr[i]=prior[i*3+c]}const r=deconvChannel(obs,w,h,k,ks,reg,prior?pr:null,rho);for(let i=0;i<obs.length;i++)out[i*3+c]=clamp(r[i])}return out}
-function gaussianRGB(rgb,w,h){const a=[.0625,.25,.375,.25,.0625],tmp=new Float32Array(rgb.length),out=new Float32Array(rgb.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++)for(let c=0;c<3;c++){let v=0;for(let j=-2;j<=2;j++)v+=rgb[(y*w+reflect(x+j,w))*3+c]*a[j+2];tmp[(y*w+x)*3+c]=v}for(let y=0;y<h;y++)for(let x=0;x<w;x++)for(let c=0;c<3;c++){let v=0;for(let j=-2;j<=2;j++)v+=tmp[(reflect(y+j,h)*w+x)*3+c]*a[j+2];out[(y*w+x)*3+c]=v}return out}
-function quality(obs,cand,w,h,k,ks){const og=rgbToGray(obs),cg=rgbToGray(cand),rb=blurChannel(cg,w,h,k,ks);let ss=0,clip=0;for(let i=0;i<rb.length;i++){const d=rb[i]-og[i];ss+=d*d}for(let i=0;i<cand.length;i++)if(cand[i]<.002||cand[i]>.998)clip++;const rm=Math.sqrt(ss/rb.length),edge=edgeEnergy(cg,w,h)/Math.max(edgeEnergy(og,w,h),1e-6),hp=highpass(cg,w,h)/Math.max(highpass(og,w,h),1e-5),clipFrac=clip/cand.length,penalty=Math.max(0,edge-2.0)*.025+Math.max(0,hp-2.35)*.018+Math.max(0,clipFrac-.08)*.10;return{score:rm+penalty,rm,edge,hp,clipFrac}}
-function chooseBaseline(data,k,ks,a){const noise=Math.max(a.hp,.01),baseReg=clamp(.0018+noise*.014+(a.lowLight?.0015:0),.0008,.0065),regs=[baseReg*.5,baseReg*.8,baseReg,baseReg*1.5,baseReg*2.2],items=[];for(const reg of regs){const raw=restoreRGB(data.rgb,data.w,data.h,k,ks,reg),guarded=safeBlend(data.rgb,raw,data.w,data.h,k,ks);items.push({img:guarded.img,reg,q:guarded.q})}items.sort((x,y)=>x.q.score-y.q.score);return items[0]}
-function pnpRefine(obs,base,w,h,k,ks,reg){let x=new Float32Array(base),seed=7;const rnd=()=>{seed=(seed*1664525+1013904223)|0;return((seed>>>0)+.5)/4294967296},gauss=()=>Math.sqrt(-2*Math.log(Math.max(rnd(),1e-9)))*Math.cos(2*Math.PI*rnd());for(let t=0;t<4;t++){const f=t/3,sigma=.018*Math.pow(.003/.018,f),noisy=new Float32Array(x.length);for(let i=0;i<x.length;i++)noisy[i]=clamp(x[i]+sigma*gauss());const prior=gaussianRGB(noisy,w,h);x=restoreRGB(obs,w,h,k,ks,reg,prior,.07+.08*f)}return x}
-function extremaRefine(obs,base,w,h,k,ks,reg){let x=new Float32Array(base);for(let t=0;t<3;t++){const g=rgbToGray(x),sm=gaussianRGB(x,w,h),prior=new Float32Array(x.length);for(let y=0;y<h;y++)for(let xx=0;xx<w;xx++){let mn=1,mx=0;for(let yy=Math.max(0,y-2);yy<=Math.min(h-1,y+2);yy++)for(let x2=Math.max(0,xx-2);x2<=Math.min(w-1,xx+2);x2++){const v=g[yy*w+x2];mn=Math.min(mn,v);mx=Math.max(mx,v)}const i=y*w+xx,dw=clamp((.10-mn)/.10),bw=clamp((mx-.90)/.10),gain=.035+.055*Math.max(dw,bw);for(let c=0;c<3;c++){const j=i*3+c;prior[j]=clamp(x[j]+gain*(x[j]-sm[j]))}}x=restoreRGB(obs,w,h,k,ks,reg,prior,.11+.05*t)}return x}
-function safeBlend(obs,cand,w,h,k,ks){let q=quality(obs,cand,w,h,k,ks);if(q.edge<=2.15&&q.hp<=2.5&&q.clipFrac<=.12)return{img:cand,q};for(const a of [.85,.7,.55,.4]){const b=new Float32Array(cand.length);for(let i=0;i<b.length;i++)b[i]=clamp(obs[i]+a*(cand[i]-obs[i]));const z=quality(obs,b,w,h,k,ks);if(z.edge<=2.15&&z.hp<=2.5&&z.clipFrac<=.12)return{img:b,q:z}}return{img:obs,q:quality(obs,obs,w,h,k,ks)}}
-function motionConstrainKernel(k,size){const st=kernelStats(k,size),angle=st.angle*Math.PI/180,ca=Math.cos(angle),sa=Math.sin(angle),c=(size-1)/2,corridor=Math.max(1.5,size*(st.anis>.65?.055:.085)),out=new Float32Array(k.length);let peak=0;for(const v of k)peak=Math.max(peak,v);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const i=y*size+x,dx=x-c,dy=y-c,off=Math.abs(-dx*sa+dy*ca),along=Math.abs(dx*ca+dy*sa),keep=off<=corridor||k[i]>=peak*.28||along<size*.08;if(keep)out[i]=k[i]}return refineKernel(centerKernel(normalizeKernel(out),size),size,false)}
-function smoothGray(src,w,h){const tmp=new Float32Array(src.length),out=new Float32Array(src.length),a=[.25,.5,.25];for(let y=0;y<h;y++)for(let x=0;x<w;x++){let v=0;for(let j=-1;j<=1;j++)v+=src[y*w+reflect(x+j,w)]*a[j+1];tmp[y*w+x]=v}for(let y=0;y<h;y++)for(let x=0;x<w;x++){let v=0;for(let j=-1;j<=1;j++)v+=tmp[reflect(y+j,h)*w+x]*a[j+1];out[y*w+x]=v}return out}
-function localGradientMap(gray,w,h){const out=new Float32Array(gray.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x,gx=gray[y*w+Math.min(w-1,x+1)]-gray[y*w+Math.max(0,x-1)],gy=gray[Math.min(h-1,y+1)*w+x]-gray[Math.max(0,y-1)*w+x];out[i]=Math.hypot(gx,gy)}return out}
-function localHighpassMap(gray,w,h){const out=new Float32Array(gray.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x,l=gray[y*w+Math.max(0,x-1)],r=gray[y*w+Math.min(w-1,x+1)],u=gray[Math.max(0,y-1)*w+x],d=gray[Math.min(h-1,y+1)*w+x];out[i]=Math.abs(4*gray[i]-l-r-u-d)}return out}
-function rgacRefine(obs,candidates,w,h,k,ks){const entries=candidates.map(x=>({img:x.img,q:x.q})),observedGray=rgbToGray(obs),observedEdge=smoothGray(localGradientMap(observedGray,w,h),w,h),observedHp=smoothGray(localHighpassMap(observedGray,w,h),w,h),energies=[],globalMin=Math.min(...entries.map(x=>x.q.score)),globalScale=Math.max(Math.abs(globalMin),.01);for(const entry of entries){const gray=rgbToGray(entry.img),reblur=blurChannel(gray,w,h,k,ks),residual=new Float32Array(gray.length),edge=smoothGray(localGradientMap(gray,w,h),w,h),hp=smoothGray(localHighpassMap(gray,w,h),w,h),energy=new Float32Array(gray.length),globalEnergy=clamp((entry.q.score-globalMin)/globalScale,0,4);for(let i=0;i<gray.length;i++){residual[i]=Math.abs(reblur[i]-observedGray[i])}const smoothResidual=smoothGray(residual,w,h);for(let i=0;i<gray.length;i++){const edgeRatio=(edge[i]+.004)/(observedEdge[i]+.004),hpRatio=(hp[i]+.003)/(observedHp[i]+.003),edgePenalty=clamp((edgeRatio-1.5)/1.25,0,3),hpPenalty=clamp((hpRatio-1.65)/1.35,0,3),clipPenalty=(entry.img[i*3]<=.003||entry.img[i*3]>=.997||entry.img[i*3+1]<=.003||entry.img[i*3+1]>=.997||entry.img[i*3+2]<=.003||entry.img[i*3+2]>=.997)?.35:0;energy[i]=1.75*smoothResidual[i]/Math.max(.004,smoothResidual[i]+.012)+.8*edgePenalty+hpPenalty+.7*clipPenalty+.22*globalEnergy}energies.push(energy)}const weights=energies.map(()=>new Float32Array(w*h)),fused=new Float32Array(obs.length);for(let i=0;i<w*h;i++){let minE=Infinity;for(const e of energies)minE=Math.min(minE,e[i]);let sum=0;for(let j=0;j<energies.length;j++){const weight=Math.exp(-(energies[j][i]-minE)/.5);weights[j][i]=weight;sum+=weight}sum=Math.max(sum,1e-8);for(let j=0;j<weights.length;j++)weights[j][i]/=sum;for(let c=0;c<3;c++){let v=0;for(let j=0;j<entries.length;j++)v+=weights[j][i]*entries[j].img[i*3+c];fused[i*3+c]=clamp(v)}}const prior=gaussianRGB(fused,w,h),projected=restoreRGB(obs,w,h,k,ks,.0012,prior,.12),guarded=safeBlend(obs,projected,w,h,k,ks),meanWeights=weights.map(a=>{let sum=0;for(const v of a)sum+=v;return sum/a.length});return{...guarded,weights:meanWeights}}
-async function restoreFamily(plan,est){const data=imageArrays(S.image,plan.restoreMax),scale=data.scale,ks=odd(Math.max(5,Math.round(est.size*scale))),k=resizeKernel(est.k,est.size,ks),out={};let t=performance.now();setStatus('Restoring Adaptive Robust Baseline…',71);await nextFrame();const baseline=chooseBaseline(data,k,ks,S.analysis);out.baseline={...baseline,kernel:k,ks,runtime:performance.now()-t};t=performance.now();setStatus('Restoring Motion-Constrained candidate…',77);await nextFrame();const mk=motionConstrainKernel(k,ks),motion=chooseBaseline(data,mk,ks,S.analysis);out.motion_constrained={...motion,kernel:mk,ks,runtime:performance.now()-t};t=performance.now();setStatus('Running Annealed PnP refinement…',83);await nextFrame();const pnp=safeBlend(data.rgb,pnpRefine(data.rgb,baseline.img,data.w,data.h,k,ks,baseline.reg),data.w,data.h,k,ks);out.annealed_pnp={...pnp,reg:baseline.reg,kernel:k,ks,runtime:performance.now()-t};t=performance.now();setStatus('Running Dual-Extreme refinement…',89);await nextFrame();const ext=safeBlend(data.rgb,extremaRefine(data.rgb,baseline.img,data.w,data.h,k,ks,baseline.reg),data.w,data.h,k,ks);out.extreme_channel={...ext,reg:baseline.reg,kernel:k,ks,runtime:performance.now()-t};t=performance.now();setStatus('Building RGAC consensus…',94);await nextFrame();const rgac=rgacRefine(data.rgb,[baseline,motion,pnp,ext],data.w,data.h,k,ks);out.rgac={...rgac,reg:baseline.reg,kernel:k,ks,runtime:performance.now()-t};return{data,methods:out}}
-function arraysToUrl(rgb,w,h){const c=E.workCanvas;c.width=w;c.height=h;const x=c.getContext('2d'),im=x.createImageData(w,h);for(let i=0;i<w*h;i++){im.data[i*4]=Math.round(255*clamp(rgb[i*3]));im.data[i*4+1]=Math.round(255*clamp(rgb[i*3+1]));im.data[i*4+2]=Math.round(255*clamp(rgb[i*3+2]));im.data[i*4+3]=255}x.putImageData(im,0,0);return new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(URL.createObjectURL(b)):reject(new Error('Could not encode result.')),'image/png'))}
-function updateSplit(){const v=clamp(Number(E.beforeAfterSlider.value),0,100);E.resultImage.style.clipPath=`inset(0 0 0 ${v}%)`;E.splitLine.style.left=v+'%';E.splitHandle.style.left=v+'%'}
-function setSplitFromClientX(clientX){const rect=E.viewer.getBoundingClientRect(),ratio=clamp((clientX-rect.left)/Math.max(rect.width,1),0,1);E.beforeAfterSlider.value=String(Math.round(ratio*100));updateSplit()}
-let splitDragging=false;
-E.beforeAfterSlider.addEventListener('input',updateSplit);
-E.splitHandle.addEventListener('pointerdown',event=>{if(E.splitHandle.classList.contains('hidden'))return;event.preventDefault();event.stopPropagation();splitDragging=true;E.splitHandle.setPointerCapture?.(event.pointerId);setSplitFromClientX(event.clientX)});
-E.splitHandle.addEventListener('pointermove',event=>{if(splitDragging)setSplitFromClientX(event.clientX)});
-for(const name of ['pointerup','pointercancel','lostpointercapture'])E.splitHandle.addEventListener(name,()=>{splitDragging=false});
-E.viewer.addEventListener('pointerdown',event=>{if(E.beforeAfterSlider.classList.contains('hidden')||event.target===E.beforeAfterSlider||event.target===E.splitHandle)return;setSplitFromClientX(event.clientX)});
-async function renderMethod(id){const item=S.methods[id];if(!item)return;S.selectedMethod=id;const radio=E.methodGrid.querySelector(`input[value="${id}"]`);if(radio)radio.checked=true;E.selectedMethodName.textContent=METHOD_META[id].name;E.methodTitle.textContent=METHOD_META[id].name;E.methodDescription.textContent=METHOD_META[id].description;releaseUrl('resultUrl');S.resultUrl=await arraysToUrl(item.img,S.outputData.w,S.outputData.h);E.resultImage.src=S.resultUrl;E.resultImage.classList.remove('hidden');E.originalImage.classList.remove('hidden');E.emptyViewer.classList.add('hidden');for(const el of [E.beforeLabel,E.afterLabel,E.splitLine,E.splitHandle,E.beforeAfterSlider])el.classList.remove('hidden');updateSplit();E.exportBtn.disabled=false;E.rmseMetric.textContent=item.q.rm.toFixed(5);E.edgeMetric.textContent=item.q.edge.toFixed(2)+'×';E.highpassMetric.textContent=item.q.hp.toFixed(2)+'×';E.clipMetric.textContent=(item.q.clipFrac*100).toFixed(1)+'%';E.methodScoreMetric.textContent=item.q.score.toFixed(5);E.methodRuntimeMetric.textContent=(item.runtime/1000).toFixed(2)+' s';E.scoreMetric.textContent=item.q.score.toFixed(5);drawKernel(item.kernel,item.ks);const ks=kernelStats(item.kernel,item.ks);E.psfTitle.textContent=id==='motion_constrained'?'Motion-constrained PSF':'Estimated PSF';E.psfNote.textContent=`${item.ks}×${item.ks} browser kernel · active taps ${ks.active} · anisotropy ${ks.anis.toFixed(2)} · off-axis mass ${(ks.off*100).toFixed(1)}%.`;E.methodDecision.textContent=`Showing ${METHOD_META[id].name}. ${id===S.recommended?'This has the lowest browser reference-free score for this image.':'You selected this method; the browser recommendation remains visible above.'}`}
-function markRecommendation(){const ids=Object.keys(S.methods),best=ids.reduce((a,b)=>S.methods[a].q.score<=S.methods[b].q.score?a:b);S.recommended=best;document.querySelectorAll('.method-option').forEach(el=>el.classList.toggle('recommended',el.dataset.method===best));E.recommendation.textContent=`Recommended: ${METHOD_META[best].name}`;E.recommendation.classList.remove('hidden')}
-function downloadSelected(){if(!S.resultUrl)return;const a=document.createElement('a');a.href=S.resultUrl;a.download=`AdaptiveBlindDeblur-${S.selectedMethod}.png`;a.click()}E.exportBtn.addEventListener('click',downloadSelected);
-E.runBtn.addEventListener('click',async()=>{if(!S.image||S.busy)return;setBusy(true);const t0=performance.now();try{resetResults();E.originalImage.src=S.sourceUrl;E.originalImage.classList.remove('hidden');E.emptyViewer.classList.add('hidden');setStatus('Analyzing image statistics and building the automatic search plan…',3);await nextFrame();const preview=imageArrays(S.image,320);S.analysis=analyzeScene(preview);const plan=autoPlan(S.image,S.analysis);E.sceneDecision.textContent=`${S.analysis.lowLight?'Low-light':S.analysis.highSaturation?'Saturated/highlight-heavy':S.analysis.lowContrast?'Low-contrast':'Normal'} scene · mean ${S.analysis.mean.toFixed(2)} · contrast ${S.analysis.contrast.toFixed(2)} · ${S.analysis.modeHint}.`;E.kernelDecision.textContent=`Searching ${plan.supports.join(', ')} px supports with ${plan.modes.join(' + ')} estimation${plan.gammas.length>1?' and γ 1/2.2 candidates':''}.`;const est=await autoEstimate(plan);S.estimate=est;E.kernelMetric.textContent=`${est.size}×${est.size}`;E.modeMetric.textContent=est.mode==='dark'?'Dark-channel':'Gradient-only';const family=await restoreFamily(plan,est);S.methods=family.methods;S.outputData=family.data;markRecommendation();E.runtimeMetric.textContent=((performance.now()-t0)/1000).toFixed(1)+' s';const st=kernelStats(est.k,est.size);E.kernelDecision.textContent=`Selected ${est.size}×${est.size} ${est.mode==='dark'?'dark-channel':'gradient-only'} PSF from ${est.candidateCount} candidates · anisotropy ${st.anis.toFixed(2)}.`;await renderMethod(S.selectedMethod);setStatus(`Complete. ${METHOD_META[S.selectedMethod].name} is shown. Switch any method card for an instant before/after comparison.`,100)}catch(err){console.error(err);setStatus('Deblurring failed: '+(err?.message||String(err)),0)}finally{setBusy(false)}});
-E.methodTitle.textContent=METHOD_META[S.selectedMethod].name;E.methodDescription.textContent=METHOD_META[S.selectedMethod].description;setBusy(false);resetResults()}
-document.addEventListener('DOMContentLoaded',init,{once:true});
+"use strict";
+const METHOD_META = {
+  baseline: {
+    name: "Adaptive Robust Baseline",
+    description:
+      "Noise-aware deconvolution with a guard against ringing and new clipping.",
+  },
+  motion_constrained: {
+    name: "Motion-Constrained",
+    description:
+      "Constrains directional blur to a motion corridor. Isotropic blur keeps its original kernel.",
+  },
+  annealed_pnp: {
+    name: "Annealed PnP",
+    description:
+      "An edge-preserving denoising prior alternates with blur-consistent restoration.",
+  },
+  extreme_channel: {
+    name: "Dual-Extreme",
+    description: "Refines detail around informative dark and bright regions.",
+  },
+  rgac: {
+    name: "RGAC",
+    description:
+      "Combines complementary candidates evaluated against a shared blur model.",
+  },
+};
+function init() {
+  const ids = [
+    "fileInput",
+    "dropZone",
+    "runBtn",
+    "cancelBtn",
+    "statusText",
+    "progressBar",
+    "imageMetric",
+    "outputMetric",
+    "runtimeMetric",
+    "kernelMetric",
+    "methodGrid",
+    "recommendation",
+    "methodTitle",
+    "methodDescription",
+    "viewer",
+    "viewerScroll",
+    "emptyViewer",
+    "originalImage",
+    "resultImage",
+    "beforeLabel",
+    "afterLabel",
+    "splitLine",
+    "beforeAfterSlider",
+    "exportBtn",
+    "reportBtn",
+    "rmseMetric",
+    "edgeMetric",
+    "highpassMetric",
+    "clipMetric",
+    "methodScoreMetric",
+    "methodRuntimeMetric",
+    "psfCanvas",
+    "psfNote",
+    "kernelDecision",
+    "metricNote",
+    "qualitySelect",
+    "resolutionSelect",
+    "modelSelect",
+    "motionControls",
+    "defocusControls",
+    "motionLength",
+    "motionAngle",
+    "defocusRadius",
+    "denoise",
+    "denoiseValue",
+    "zoomSelect",
+    "settings",
+    "fileName",
+  ];
+  const E = Object.fromEntries(
+    ids.map((id) => [id, document.getElementById(id)]),
+  );
+  if (Object.values(E).some((value) => !value) || !globalThis.DeblurCore) {
+    document.getElementById("fatal").textContent =
+      "The app could not load. Keep all Browser Lab files together and reload the page.";
+    document.getElementById("fatal").hidden = false;
+    return;
+  }
+  const S = {
+    image: null,
+    sourceUrl: null,
+    resultUrl: null,
+    fileName: "image",
+    selected: "rgac",
+    result: null,
+    worker: null,
+    generation: 0,
+    renderId: 0,
+    busy: false,
+    decoding: false,
+    cancelJob: null,
+  };
+  const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+  function status(text, percent = 0) {
+    E.statusText.textContent = text;
+    E.progressBar.value = clamp(percent, 0, 100);
+  }
+  function busy(value) {
+    S.busy = value;
+    E.runBtn.disabled = value || S.decoding || !S.image;
+    E.runBtn.textContent = value ? "Restoring…" : "Analyze & deblur";
+    E.cancelBtn.hidden = !value;
+    E.settings.disabled = value;
+    E.viewerScroll.setAttribute("aria-busy", String(value));
+  }
+  function revoke(key) {
+    if (S[key]) URL.revokeObjectURL(S[key]);
+    S[key] = null;
+  }
+  function reset() {
+    S.renderId++;
+    S.result = null;
+    revoke("resultUrl");
+    E.resultImage.hidden = true;
+    E.resultImage.removeAttribute("src");
+    for (const id of [
+      "beforeLabel",
+      "afterLabel",
+      "splitLine",
+      "beforeAfterSlider",
+    ])
+      E[id].hidden = true;
+    for (const id of [
+      "outputMetric",
+      "runtimeMetric",
+      "kernelMetric",
+      "rmseMetric",
+      "edgeMetric",
+      "highpassMetric",
+      "clipMetric",
+      "methodScoreMetric",
+      "methodRuntimeMetric",
+    ])
+      E[id].textContent = "—";
+    E.recommendation.hidden = true;
+    E.exportBtn.disabled = true;
+    E.reportBtn.disabled = true;
+    E.metricNote.textContent =
+      "Diagnostics describe the restored pixels. A lower score does not prove better visual quality.";
+    E.psfNote.textContent = "The blur kernel will appear after processing.";
+    E.kernelDecision.textContent =
+      "Choose automatic estimation, or specify motion or defocus blur.";
+    document
+      .querySelectorAll(".method-option")
+      .forEach((el) => el.classList.remove("recommended"));
+    drawKernel(null, 0);
+  }
+  function cancel(announce = true) {
+    S.generation++;
+    S.renderId++;
+    S.worker?.terminate();
+    S.worker = null;
+    if (S.cancelJob) {
+      S.cancelJob(new Error("Cancelled"));
+      S.cancelJob = null;
+    }
+    busy(false);
+    if (announce)
+      status("Cancelled. You can change the settings and run again.");
+  }
+  async function loadFile(file) {
+    if (!file) return;
+    if (
+      !/^image\/(png|jpeg|webp)$/.test(file.type) &&
+      !/\.(png|jpe?g|webp)$/i.test(file.name)
+    ) {
+      status("Choose a PNG, JPEG or WebP image.");
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      status("Choose an image file smaller than 50 MB.");
+      return;
+    }
+    cancel(false);
+    const generation = S.generation,
+      url = URL.createObjectURL(file),
+      img = new Image();
+    S.decoding = true;
+    busy(false);
+    status("Opening image…");
+    try {
+      img.src = url;
+      await img.decode();
+      if (generation !== S.generation) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      if (
+        img.naturalWidth > 16384 ||
+        img.naturalHeight > 16384 ||
+        img.naturalWidth * img.naturalHeight > 40000000
+      )
+        throw new Error(
+          "Choose an image up to 40 megapixels and 16,384 pixels per side.",
+        );
+      revoke("sourceUrl");
+      S.sourceUrl = url;
+      S.image = img;
+      S.fileName = file.name.replace(/\.[^.]+$/, "");
+      reset();
+      E.originalImage.src = url;
+      E.originalImage.hidden = false;
+      E.emptyViewer.hidden = true;
+      E.fileName.textContent = file.name;
+      E.imageMetric.textContent = `${img.naturalWidth} × ${img.naturalHeight}`;
+      E.zoomSelect.value = "fit";
+      resizeViewer();
+      status(
+        img.naturalWidth * img.naturalHeight > 12000000
+          ? "Image ready. For images above 12 MP, select the 1400 px preview."
+          : "Image ready. Native output preserves its dimensions. Larger images take longer.",
+      );
+    } catch (error) {
+      URL.revokeObjectURL(url);
+      if (generation === S.generation)
+        status(error.message || "This image could not be decoded.");
+    } finally {
+      if (generation === S.generation) {
+        S.decoding = false;
+        busy(false);
+      }
+    }
+  }
+  E.fileInput.addEventListener("change", () => {
+    loadFile(E.fileInput.files?.[0]);
+    E.fileInput.value = "";
+  });
+  for (const name of ["dragenter", "dragover"])
+    E.dropZone.addEventListener(name, (event) => {
+      event.preventDefault();
+      E.dropZone.classList.add("drag");
+    });
+  for (const name of ["dragleave", "drop"])
+    E.dropZone.addEventListener(name, (event) => {
+      event.preventDefault();
+      E.dropZone.classList.remove("drag");
+    });
+  E.dropZone.addEventListener("drop", (event) =>
+    loadFile(event.dataTransfer?.files?.[0]),
+  );
+  E.cancelBtn.addEventListener("click", () => cancel());
+  function updateModel() {
+    E.motionControls.hidden = E.modelSelect.value !== "motion";
+    E.defocusControls.hidden = E.modelSelect.value !== "defocus";
+  }
+  E.modelSelect.addEventListener("change", updateModel);
+  E.denoise.addEventListener("input", () => {
+    E.denoiseValue.value = `${Number(E.denoise.value).toFixed(2)}×`;
+  });
+  E.settings.addEventListener("change", () => {
+    if (S.result)
+      status(
+        "Settings changed. Run again to apply them; the current result still uses the previous settings.",
+        100,
+      );
+  });
+  function resizeViewer() {
+    if (!S.image) return;
+    const w = S.result?.w || S.image.naturalWidth,
+      h = S.result?.h || S.image.naturalHeight;
+    const available = Math.max(1, E.viewerScroll.clientWidth - 2),
+      maxHeight = Math.max(260, Math.min(720, window.innerHeight * 0.65));
+    const width =
+      E.zoomSelect.value === "fit"
+        ? Math.min(available, (maxHeight * w) / h)
+        : w * Number(E.zoomSelect.value);
+    E.viewer.style.width = `${width}px`;
+    E.viewer.style.height = `${(width * h) / w}px`;
+    E.viewerScroll.classList.toggle("zoomed", E.zoomSelect.value !== "fit");
+  }
+  E.zoomSelect.addEventListener("change", resizeViewer);
+  window.addEventListener("resize", resizeViewer);
+  function updateSplit() {
+    const value = clamp(Number(E.beforeAfterSlider.value), 0, 100);
+    E.resultImage.style.clipPath = `inset(0 0 0 ${value}%)`;
+    E.splitLine.style.left = `${value}%`;
+    E.beforeAfterSlider.setAttribute(
+      "aria-valuetext",
+      `${value}% original, ${100 - value}% restored`,
+    );
+  }
+  E.beforeAfterSlider.addEventListener("input", updateSplit);
+  let dragging = false;
+  function moveSplit(event) {
+    const rect = E.viewer.getBoundingClientRect();
+    E.beforeAfterSlider.value = String(
+      Math.round(
+        100 * clamp((event.clientX - rect.left) / Math.max(1, rect.width)),
+      ),
+    );
+    updateSplit();
+  }
+  E.viewer.addEventListener("pointerdown", (event) => {
+    if (
+      !S.result ||
+      (event.pointerType === "touch" && E.zoomSelect.value !== "fit")
+    )
+      return;
+    dragging = true;
+    E.viewer.setPointerCapture?.(event.pointerId);
+    moveSplit(event);
+  });
+  E.viewer.addEventListener("pointermove", (event) => {
+    if (dragging) moveSplit(event);
+  });
+  for (const name of ["pointerup", "pointercancel", "lostpointercapture"])
+    E.viewer.addEventListener(name, () => {
+      dragging = false;
+    });
+  function drawKernel(k, size) {
+    const canvas = E.psfCanvas,
+      ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#101828";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!k) return;
+    const pixels = ctx.createImageData(canvas.width, canvas.height);
+    let peak = 0;
+    for (const v of k) peak = Math.max(peak, v);
+    for (let y = 0; y < canvas.height; y++)
+      for (let x = 0; x < canvas.width; x++) {
+        const index = (y * canvas.width + x) * 4;
+        const value = Math.pow(
+          k[
+            Math.floor((y * size) / canvas.height) * size +
+              Math.floor((x * size) / canvas.width)
+          ] / Math.max(1e-12, peak),
+          0.5,
+        );
+        pixels.data[index] = 16 + 210 * value;
+        pixels.data[index + 1] = 24 + 210 * value;
+        pixels.data[index + 2] = 40 + 215 * value;
+        pixels.data[index + 3] = 255;
+      }
+    ctx.putImageData(pixels, 0, 0);
+  }
+  async function renderMethod(id) {
+    S.selected = id;
+    E.methodTitle.textContent = METHOD_META[id].name;
+    E.methodDescription.textContent = METHOD_META[id].description;
+    const item = S.result?.methods[id];
+    if (!item) return;
+    const renderId = ++S.renderId,
+      generation = S.generation,
+      canvas = document.createElement("canvas");
+    E.exportBtn.disabled = true;
+    try {
+      canvas.width = S.result.w;
+      canvas.height = S.result.h;
+      canvas
+        .getContext("2d")
+        .putImageData(
+          new ImageData(item.rgba, canvas.width, canvas.height),
+          0,
+          0,
+        );
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
+      canvas.width = canvas.height = 1;
+      if (!blob)
+        throw new Error(
+          "PNG export could not be created. Try preview resolution.",
+        );
+      if (renderId !== S.renderId || generation !== S.generation) return;
+      revoke("resultUrl");
+      S.resultUrl = URL.createObjectURL(blob);
+      E.resultImage.src = S.resultUrl;
+      E.resultImage.hidden = false;
+      for (const key of [
+        "beforeLabel",
+        "afterLabel",
+        "splitLine",
+        "beforeAfterSlider",
+      ])
+        E[key].hidden = false;
+      E.exportBtn.disabled = false;
+      E.reportBtn.disabled = false;
+      updateSplit();
+      resizeViewer();
+      E.rmseMetric.textContent = item.q.rm.toFixed(5);
+      E.edgeMetric.textContent = `${item.q.edge.toFixed(2)}×`;
+      E.highpassMetric.textContent = `${item.q.hp.toFixed(2)}×`;
+      E.clipMetric.textContent = `${(100 * item.q.extraClip).toFixed(1)}%`;
+      E.methodScoreMetric.textContent = item.q.score.toFixed(5);
+      E.methodRuntimeMetric.textContent = `${(item.runtime / 1000).toFixed(1)} s`;
+      drawKernel(item.kernel, item.ks);
+      E.psfNote.textContent = `${item.ks} × ${item.ks} kernel in output pixels. ${S.result.options.model === "auto" ? "Estimated from this image." : "Using your blur settings."}`;
+    } catch (error) {
+      if (renderId === S.renderId) status(error.message);
+    }
+  }
+  E.methodGrid
+    .querySelectorAll("input")
+    .forEach((input) =>
+      input.addEventListener("change", () => renderMethod(input.value)),
+    );
+  function download(url, name) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+  }
+  E.exportBtn.addEventListener("click", () => {
+    if (S.resultUrl)
+      download(
+        S.resultUrl,
+        `${S.fileName}-${S.selected}-${S.result.w}x${S.result.h}.png`,
+      );
+  });
+  E.reportBtn.addEventListener("click", () => {
+    if (!S.result) return;
+    const { methods, estimate, ...metadata } = S.result;
+    const report = {
+      schema: "browser-lab-v2",
+      ...metadata,
+      selectedMethod: S.selected,
+      note: "Reference-free diagnostics at the stated diagnosticSize using the common estimated PSF. Not ground-truth quality or Python benchmark results.",
+      estimate: { ...estimate, k: Array.from(estimate.k) },
+      methods: Object.fromEntries(
+        Object.entries(methods).map(([id, item]) => [
+          id,
+          {
+            q: item.q,
+            runtime: item.runtime,
+            kernelSize: item.ks,
+            kernel: Array.from(item.kernel),
+          },
+        ]),
+      ),
+    };
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
+    );
+    download(url, `${S.fileName}-deblur-settings.json`);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  async function execute(image, options, generation) {
+    const progress = (text, percent) => {
+      if (generation !== S.generation) throw new Error("Cancelled");
+      status(text, percent);
+    };
+    // file:// browsers commonly disallow workers. Keep the offline workflow with
+    // cooperative yields; hosted pages always use a dedicated worker.
+    if (location.protocol === "file:" || typeof Worker === "undefined") {
+      status("Processing locally. This browser uses the compatibility mode.");
+      return DeblurCore.run(image, options, progress);
+    }
+    return new Promise((resolve, reject) => {
+      const worker = new Worker("deblur-worker.js");
+      S.worker = worker;
+      S.cancelJob = reject;
+      worker.onmessage = ({ data }) => {
+        if (generation !== S.generation || data.id !== generation) return;
+        if (data.type === "progress") progress(data.text, data.percent);
+        else if (data.type === "result") resolve(data.result);
+        else if (data.type === "error") reject(new Error(data.message));
+      };
+      worker.onerror = () =>
+        reject(
+          new Error(
+            "The processing worker could not run. Reload with all Browser Lab files present, or open index.html locally for compatibility mode.",
+          ),
+        );
+      worker.postMessage({ id: generation, image, options }, [
+        image.rgba.buffer,
+      ]);
+    });
+  }
+  E.runBtn.addEventListener("click", async () => {
+    if (!S.image || S.busy || S.decoding) return;
+    const generation = ++S.generation;
+    try {
+      const options = DeblurCore.validateOptions({
+        quality: E.qualitySelect.value,
+        resolution: E.resolutionSelect.value,
+        model: E.modelSelect.value,
+        length: Number(E.motionLength.value),
+        angle: Number(E.motionAngle.value),
+        radius: Number(E.defocusRadius.value),
+        denoise: Number(E.denoise.value),
+      });
+      const w = S.image.naturalWidth,
+        h = S.image.naturalHeight;
+      if (w * h > 12000000 && options.resolution === "native")
+        throw new Error(
+          "Native output supports up to 12 MP. Select 1400 px preview or choose a smaller image.",
+        );
+      reset();
+      busy(true);
+      status("Preparing image…", 1);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (generation !== S.generation) return;
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(S.image, 0, 0);
+      const rgba = ctx.getImageData(0, 0, w, h).data;
+      canvas.width = canvas.height = 1;
+      const result = await execute({ rgba, w, h }, options, generation);
+      if (generation !== S.generation) return;
+      S.result = result;
+      E.outputMetric.textContent = `${result.w} × ${result.h}${result.scale < 1 ? " · preview" : " · native"}`;
+      E.runtimeMetric.textContent = `${(result.totalRuntime / 1000).toFixed(1)} s`;
+      E.kernelMetric.textContent = `${result.estimate.size} × ${result.estimate.size}`;
+      E.recommendation.textContent = `Lowest diagnostic score: ${METHOD_META[result.recommended].name}`;
+      E.recommendation.hidden = false;
+      document
+        .querySelectorAll(".method-option")
+        .forEach((el) =>
+          el.classList.toggle(
+            "recommended",
+            el.dataset.method === result.recommended,
+          ),
+        );
+      E.kernelDecision.textContent = `${result.estimate.mode} · ${result.estimate.candidateCount} candidates · ${result.tiles} restoration tiles.`;
+      E.metricNote.textContent = `Diagnostics measured at ${result.diagnosticSize}, using one common blur model. Use 100% zoom to judge detail and ringing; scores are not a quality guarantee.`;
+      await renderMethod(S.selected);
+      if (generation === S.generation)
+        status(
+          `Complete: ${result.w} × ${result.h} ${result.scale < 1 ? "preview" : "native"} pixels. Compare the five methods and export the selected result.`,
+          100,
+        );
+    } catch (error) {
+      if (generation === S.generation) status(error.message || String(error));
+    } finally {
+      if (generation === S.generation) {
+        S.worker?.terminate();
+        S.worker = null;
+        S.cancelJob = null;
+        busy(false);
+      }
+    }
+  });
+  window.addEventListener("pagehide", (event) => {
+    cancel(false);
+    if (!event.persisted) {
+      revoke("sourceUrl");
+      revoke("resultUrl");
+    }
+  });
+  updateModel();
+  reset();
+  busy(false);
+  renderMethod(S.selected);
+}
+document.addEventListener("DOMContentLoaded", init, { once: true });

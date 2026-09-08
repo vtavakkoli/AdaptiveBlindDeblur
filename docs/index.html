@@ -1,37 +1,324 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light">
-<meta name="description" content="AdaptiveBlindDeblur Browser Lab — five selectable deblurring methods with live before/after comparison.">
-<title>AdaptiveBlindDeblur · Browser Lab</title>
-<link rel="stylesheet" href="browser-lab.css">
-</head>
-<body>
-<div id="fatal" class="fatal hidden"></div>
-<main class="shell" id="app">
-<header class="hero">
-<div><div class="eyebrow">AdaptiveBlindDeblur · Browser Lab</div><h1>Five deblurring methods.<br>One live before / after view.</h1><p>Upload a blurred image, choose the restoration method you want, and compare the result interactively. The browser still estimates the PSF and internal parameters automatically; only the high-level method is user-selectable. Everything runs locally in this tab.</p></div>
-<div class="hero-side"><div class="badge"><span class="dot"></span>100% local processing</div><div class="badge"><span class="dot"></span>Five selectable methods</div><div class="badge"><span class="dot"></span>Automatic PSF search</div><div class="badge"><span class="dot"></span>No backend or CDN</div></div>
-</header>
-<section class="card control-card"><label class="drop" id="dropZone" for="fileInput"><span class="drop-icon">↥</span><span><strong>Drop a blurred image here</strong><small>or click to choose PNG / JPEG / WebP</small></span><input id="fileInput" type="file" accept="image/*"></label><button id="runBtn" class="run" disabled>Analyze &amp; deblur</button></section>
-<div id="status" class="status">Choose an image, then select the method you want to inspect.<div class="progress"><span id="progressBar"></span></div></div>
-<div class="section-title"><div><h2>Choose a deblurring method</h2><p>All low-level parameters remain automatic. You can switch methods after processing without uploading again.</p></div><span id="recommendation" class="recommendation hidden">Recommended: —</span></div>
-<section id="methodGrid" class="method-grid" aria-label="Deblurring method">
-<label class="method-option" data-method="baseline"><input type="radio" name="method" value="baseline"><span class="method-card"><span class="top"><span class="num">01</span><span class="rec">Recommended</span></span><strong>Adaptive Robust Baseline</strong><small>Conservative blind restoration with artifact-aware regularization.</small></span></label>
-<label class="method-option" data-method="motion_constrained"><input type="radio" name="method" value="motion_constrained"><span class="method-card"><span class="top"><span class="num">02</span><span class="rec">Recommended</span></span><strong>Motion-Constrained</strong><small>Restricts the estimated PSF to a thin motion corridor before restoration.</small></span></label>
-<label class="method-option" data-method="annealed_pnp"><input type="radio" name="method" value="annealed_pnp"><span class="method-card"><span class="top"><span class="num">03</span><span class="rec">Recommended</span></span><strong>Annealed PnP</strong><small>Uses an annealed denoising prior plus repeated blur-model consistency.</small></span></label>
-<label class="method-option" data-method="extreme_channel"><input type="radio" name="method" value="extreme_channel"><span class="method-card"><span class="top"><span class="num">04</span><span class="rec">Recommended</span></span><strong>Dual-Extreme</strong><small>Recovers detail around informative dark and bright local extrema.</small></span></label>
-<label class="method-option" data-method="rgac"><input type="radio" name="method" value="rgac" checked><span class="method-card"><span class="top"><span class="num">05</span><span class="rec">Recommended</span></span><strong>RGAC</strong><small>Residual-guided consensus over complementary restoration candidates.</small></span></label>
-</section>
-<section class="summary"><div class="metric"><span>Image</span><strong id="imageMetric">—</strong></div><div class="metric"><span>Selected method</span><strong id="selectedMethodName">RGAC</strong></div><div class="metric"><span>PSF support</span><strong id="kernelMetric">—</strong></div><div class="metric"><span>Estimator</span><strong id="modeMetric">—</strong></div><div class="metric"><span>Method score</span><strong id="scoreMetric">—</strong></div><div class="metric"><span>Total runtime</span><strong id="runtimeMetric">—</strong></div></section>
-<section class="workspace">
-<article class="card viewer-card"><div class="viewer-head"><div><h2 id="methodTitle">RGAC</h2><p id="methodDescription">Residual-guided adaptive consensus across complementary browser-side candidates.</p></div><span class="selected-chip">Selected method</span></div><div class="viewer" id="viewer"><div id="emptyViewer" class="empty"><div><b>Your comparison will appear here</b>Upload an image, run the analysis, then drag the slider to compare before and after.</div></div><img id="originalImage" class="hidden" alt="Original blurred image"><img id="resultImage" class="after hidden" alt="Deblurred result"><span id="beforeLabel" class="viewer-label before-label hidden">Before</span><span id="afterLabel" class="viewer-label after-label hidden">After</span><div id="splitLine" class="split-line hidden"></div><div id="splitHandle" class="handle hidden">↔</div><input id="beforeAfterSlider" class="split hidden" type="range" min="0" max="100" value="50" aria-label="Before and after comparison"></div><div class="viewer-actions"><span class="hint">Drag the center handle, click the image, or use the bottom slider to compare Before and After.</span><button id="exportBtn" class="secondary" disabled>Export selected result</button></div></article>
-<aside class="side"><section class="card panel"><h3>Selected method diagnostics</h3><div class="score-grid"><div class="score"><span>Reblur RMSE</span><strong id="rmseMetric">—</strong></div><div class="score"><span>Edge ratio</span><strong id="edgeMetric">—</strong></div><div class="score"><span>High-pass ratio</span><strong id="highpassMetric">—</strong></div><div class="score"><span>Clipped pixels</span><strong id="clipMetric">—</strong></div><div class="score"><span>Reference-free score</span><strong id="methodScoreMetric">—</strong></div><div class="score"><span>Method runtime</span><strong id="methodRuntimeMetric">—</strong></div></div></section><section class="card panel"><h3 id="psfTitle">Estimated PSF</h3><div class="psf-wrap"><canvas id="psfCanvas" width="220" height="220"></canvas><div class="psf-copy"><b>Kernel used for this result</b><span id="psfNote">The PSF is inferred only from the uploaded image. No legacy output or legacy kernel is used.</span></div></div></section><section class="card panel"><h3>What the browser decided</h3><div class="decision-list"><div class="decision"><b>Scene analysis</b><span id="sceneDecision">Waiting for an image.</span></div><div class="decision"><b>Kernel search</b><span id="kernelDecision">Support, gamma and estimator are selected automatically.</span></div><div class="decision"><b>Method family</b><span id="methodDecision">The selected method controls which restoration is shown; all low-level tuning stays automatic.</span></div></div><div class="note">The Browser Lab is a self-contained numerical approximation of the research pipeline. The Python/Docker implementation remains authoritative for publication-quality benchmarking.</div></section></aside>
-</section>
-<canvas id="workCanvas" class="hidden"></canvas><footer class="footer">AdaptiveBlindDeblur Browser Lab · Local-only processing · Switch methods instantly after one run · No image upload, backend, CDN, model download or external runtime dependency.</footer>
-</main>
-<script src="browser-lab.js"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta
+      name="description"
+      content="Restore blurred photos locally, compare five deblurring methods, and export native-resolution PNGs."
+    />
+    <title>AdaptiveBlindDeblur · Browser Lab</title>
+    <link rel="stylesheet" href="browser-lab.css" />
+    <script src="deblur-core.js" defer></script>
+    <script src="browser-lab.js" defer></script>
+  </head>
+  <body>
+    <div id="fatal" class="fatal" role="alert" hidden></div>
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <div class="eyebrow">AdaptiveBlindDeblur / Browser Lab</div>
+          <h1>Bring the details into focus.</h1>
+          <p>
+            Restore a blurred image, compare five methods, and inspect the
+            original pixels.
+          </p>
+        </div>
+        <span class="badge">Images stay on your device</span>
+      </header>
+      <section class="card control-card" aria-label="Choose an image">
+        <label class="drop" id="dropZone" for="fileInput"
+          ><span class="drop-icon" aria-hidden="true">↥</span
+          ><span
+            ><strong id="fileName">Drop an image or choose a file</strong
+            ><small>PNG, JPEG or WebP · up to 50 MB</small></span
+          ><input
+            id="fileInput"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+        /></label>
+        <div class="run-actions">
+          <button id="runBtn" class="run" disabled>Analyze &amp; deblur</button
+          ><button id="cancelBtn" class="secondary" hidden>Cancel</button>
+        </div>
+      </section>
+      <fieldset id="settings" class="settings card">
+        <legend>Restoration settings</legend>
+        <div class="settings-row">
+          <label
+            >Output resolution<select id="resolutionSelect">
+              <option value="native">Native resolution (up to 12 MP)</option>
+              <option value="preview">Preview (1400 px longest side)</option>
+            </select></label
+          >
+          <label
+            >Automatic search<select id="qualitySelect">
+              <option value="quality">Thorough</option>
+              <option value="fast">Quick</option>
+            </select></label
+          >
+          <label
+            >Blur model<select id="modelSelect">
+              <option value="auto">Estimate automatically</option>
+              <option value="motion">Straight motion</option>
+              <option value="defocus">Out of focus (disk)</option>
+            </select></label
+          >
+          <label
+            >Noise suppression
+            <output id="denoiseValue" for="denoise">1.00×</output
+            ><input
+              id="denoise"
+              type="range"
+              min="0.25"
+              max="4"
+              step="0.25"
+              value="1"
+          /></label>
+        </div>
+        <div id="motionControls" class="manual-controls" hidden>
+          <label
+            >Motion length (original pixels)<input
+              id="motionLength"
+              type="number"
+              min="1"
+              max="121"
+              step="1"
+              value="17" /></label
+          ><label
+            >Angle (degrees)<input
+              id="motionAngle"
+              type="number"
+              min="-180"
+              max="180"
+              step="1"
+              value="0"
+          /></label>
+          <p>
+            0° is horizontal; positive angles rotate clockwise. Match the
+            visible blur trail.
+          </p>
+        </div>
+        <div id="defocusControls" class="manual-controls" hidden>
+          <label
+            >Blur radius (original pixels)<input
+              id="defocusRadius"
+              type="number"
+              min="0.5"
+              max="30"
+              step="0.5"
+              value="3"
+          /></label>
+          <p>
+            Start with a small radius. Increase it until edges recover without
+            bright halos.
+          </p>
+        </div>
+      </fieldset>
+      <div class="status">
+        <span id="statusText" role="status" aria-live="polite"
+          >Choose an image to begin. Native processing can take several minutes
+          for large images.</span
+        ><progress
+          id="progressBar"
+          max="100"
+          value="0"
+          aria-label="Restoration progress"
+        ></progress>
+      </div>
+      <div class="section-title">
+        <h2>Compare restorations</h2>
+        <span id="recommendation" class="recommendation" hidden></span>
+      </div>
+      <section
+        id="methodGrid"
+        class="method-grid"
+        aria-label="Deblurring method"
+      >
+        <label class="method-option" data-method="baseline"
+          ><input type="radio" name="method" value="baseline" /><span
+            class="method-card"
+            ><span class="num">01</span><strong>Robust Baseline</strong
+            ><small>Noise-aware deconvolution</small></span
+          ></label
+        >
+        <label class="method-option" data-method="motion_constrained"
+          ><input type="radio" name="method" value="motion_constrained" /><span
+            class="method-card"
+            ><span class="num">02</span><strong>Motion-Constrained</strong
+            ><small>Directional blur recovery</small></span
+          ></label
+        >
+        <label class="method-option" data-method="annealed_pnp"
+          ><input type="radio" name="method" value="annealed_pnp" /><span
+            class="method-card"
+            ><span class="num">03</span><strong>Annealed PnP</strong
+            ><small>Edge-preserving refinement</small></span
+          ></label
+        >
+        <label class="method-option" data-method="extreme_channel"
+          ><input type="radio" name="method" value="extreme_channel" /><span
+            class="method-card"
+            ><span class="num">04</span><strong>Dual-Extreme</strong
+            ><small>Dark and bright detail</small></span
+          ></label
+        >
+        <label class="method-option" data-method="rgac"
+          ><input type="radio" name="method" value="rgac" checked /><span
+            class="method-card"
+            ><span class="num">05</span><strong>RGAC</strong
+            ><small>Consensus restoration</small></span
+          ></label
+        >
+      </section>
+      <section class="summary" aria-label="Processing summary">
+        <div class="metric">
+          <span>Original</span><strong id="imageMetric">—</strong>
+        </div>
+        <div class="metric">
+          <span>Output</span><strong id="outputMetric">—</strong>
+        </div>
+        <div class="metric">
+          <span>Blur kernel</span><strong id="kernelMetric">—</strong>
+        </div>
+        <div class="metric">
+          <span>Total time</span><strong id="runtimeMetric">—</strong>
+        </div>
+      </section>
+      <section class="workspace">
+        <article class="card viewer-card">
+          <div class="viewer-head">
+            <div>
+              <h2 id="methodTitle">RGAC</h2>
+              <p id="methodDescription">Consensus restoration</p>
+            </div>
+            <label class="zoom-label"
+              >View<select id="zoomSelect">
+                <option value="fit">Fit image</option>
+                <option value="1">100% pixels</option>
+                <option value="2">200% pixels</option>
+              </select></label
+            >
+          </div>
+          <div id="viewerScroll" class="viewer-scroll">
+            <div id="viewer" class="viewer">
+              <div id="emptyViewer" class="empty">
+                <div>
+                  <b>Your image will appear here</b>Choose a blurred image above
+                  to start.
+                </div>
+              </div>
+              <img id="originalImage" alt="Original blurred image" hidden /><img
+                id="resultImage"
+                class="after"
+                alt="Restored image using the selected method"
+                hidden
+              /><span id="beforeLabel" class="viewer-label before-label" hidden
+                >Original</span
+              ><span id="afterLabel" class="viewer-label after-label" hidden
+                >Restored</span
+              >
+              <div id="splitLine" class="split-line" hidden></div>
+            </div>
+          </div>
+          <input
+            id="beforeAfterSlider"
+            class="split"
+            type="range"
+            min="0"
+            max="100"
+            value="50"
+            aria-label="Before and after comparison"
+            hidden
+          />
+          <div class="viewer-actions">
+            <span class="hint"
+              >Drag across the image or use the slider. At 100%, scroll to
+              inspect detail.</span
+            >
+            <div class="export-actions">
+              <button id="reportBtn" class="secondary" disabled>
+                Save settings &amp; PSF</button
+              ><button id="exportBtn" class="run export" disabled>
+                Export PNG
+              </button>
+            </div>
+          </div>
+        </article>
+        <aside class="side">
+          <section class="card panel">
+            <h3>Restoration diagnostics</h3>
+            <div class="score-grid">
+              <div class="score">
+                <span>Reblur RMSE</span><strong id="rmseMetric">—</strong>
+              </div>
+              <div class="score">
+                <span>Edge ratio</span><strong id="edgeMetric">—</strong>
+              </div>
+              <div class="score">
+                <span>High-pass ratio</span
+                ><strong id="highpassMetric">—</strong>
+              </div>
+              <div class="score">
+                <span>Added clipping</span><strong id="clipMetric">—</strong>
+              </div>
+              <div class="score">
+                <span>Diagnostic score ↓</span
+                ><strong id="methodScoreMetric">—</strong>
+              </div>
+              <div class="score">
+                <span>Method time</span
+                ><strong id="methodRuntimeMetric">—</strong>
+              </div>
+            </div>
+            <p id="metricNote" class="note">
+              Use the image comparison to judge quality.
+            </p>
+          </section>
+          <section class="card panel">
+            <h3>Blur kernel / PSF</h3>
+            <div class="psf-wrap">
+              <canvas
+                id="psfCanvas"
+                width="180"
+                height="180"
+                aria-label="Blur kernel visualization"
+              ></canvas>
+              <p id="psfNote">The blur kernel will appear after processing.</p>
+            </div>
+            <p id="kernelDecision" class="note">
+              Estimate automatically, or describe the blur manually.
+            </p>
+          </section>
+          <details class="card panel">
+            <summary>Getting a better result</summary>
+            <p>
+              Start with automatic estimation. If motion trails remain, choose
+              Straight motion and adjust its length and angle. For uniform
+              softness, try the disk model.
+            </p>
+            <p>
+              Increase noise suppression if grain or ringing appears. Check at
+              100% before exporting. Different blur across the image, clipped
+              highlights, and lost detail can limit recovery.
+            </p>
+            <p>
+              This is a classical, weight-free browser implementation. See
+              <a href="BROWSER_QUALITY.md">methods and validation</a> for its
+              limits and the separate Python benchmark.
+            </p>
+          </details>
+        </aside>
+      </section>
+      <footer class="footer">
+        Local processing · No uploads or model downloads · Transparent PNG alpha
+        is preserved · The Python/Docker pipeline remains the research
+        benchmark.
+      </footer>
+      <noscript
+        ><p>Enable JavaScript to run local image restoration.</p></noscript
+      >
+    </main>
+  </body>
 </html>

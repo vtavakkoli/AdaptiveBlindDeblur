@@ -34,115 +34,65 @@ def test_docker_report_workflow_files_exist() -> None:
 
 
 def test_browser_page_uses_only_local_runtime_assets() -> None:
-    page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
-    script = (ROOT / "docs" / "browser-lab.js").read_text(encoding="utf-8")
-    styles = (ROOT / "docs" / "browser-lab.css").read_text(encoding="utf-8")
-    lower = page.lower()
+    """Every shipped runtime asset is local and present in the Pages directory."""
+    from html.parser import HTMLParser
 
-    assert 'type="file"' in lower
-    assert "analyze &amp; deblur" in lower
-    assert "export selected result" in lower
-    assert "five deblurring methods" in lower
-    assert "before / after" in lower
-    assert '<script src="browser-lab.js"></script>' in lower
-    assert '<link rel="stylesheet" href="browser-lab.css">' in lower
+    class Assets(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.urls: list[str] = []
 
-    for content in (page, script, styles):
-        lowered = content.lower()
-        assert "https://" not in lowered
-        assert "http://" not in lowered
-        assert "https://cdn" not in lowered
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            values = dict(attrs)
+            if tag == "script" and values.get("src"):
+                self.urls.append(values["src"])
+            if tag == "link" and values.get("rel") == "stylesheet":
+                self.urls.append(values["href"])
+
+    parser = Assets()
+    parser.feed((ROOT / "docs" / "index.html").read_text(encoding="utf-8"))
+    assert set(parser.urls) == {"browser-lab.css", "browser-lab.js", "deblur-core.js"}
+    for asset in [*parser.urls, "deblur-worker.js"]:
+        content = (ROOT / "docs" / asset).read_text(encoding="utf-8")
+        assert "https://" not in content and "http://" not in content
 
 
 def test_browser_lab_required_dom_ids_exist() -> None:
     page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
     script = (ROOT / "docs" / "browser-lab.js").read_text(encoding="utf-8")
-    html_ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', page))
-    required_match = re.search(r"const REQUIRED_IDS=\[(.*?)\];", script, re.DOTALL)
+    html_ids = re.findall(r'id="([A-Za-z0-9_-]+)"', page)
+    assert len(html_ids) == len(set(html_ids)), "Duplicate element IDs break control binding"
+    required_match = re.search(r"const ids\s*=\s*\[(.*?)\];", script, re.DOTALL)
     assert required_match is not None
-    required_ids = set(re.findall(r"'([^']+)'", required_match.group(1)))
-    assert required_ids
-    assert required_ids <= html_ids
+    required_ids = set(re.findall(r"[\"']([A-Za-z0-9_-]+)[\"']", required_match.group(1)))
+    assert required_ids and required_ids <= set(html_ids)
 
 
-def test_browser_lab_exposes_five_methods_without_parameter_tuning() -> None:
-    page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
-    script = (ROOT / "docs" / "browser-lab.js").read_text(encoding="utf-8")
-    required_features = [
-        "function analyzeScene",
-        "function autoPlan",
-        "function autoEstimate",
-        "function blindCandidate",
-        "function estimatePsfFromGradients",
-        "function localMinProjection",
-        "function latentStep",
-        "function chooseBaseline",
-        "function pnpRefine",
-        "function extremaRefine",
-        "function motionConstrainKernel",
-        "function rgacRefine",
-        "async function restoreFamily",
-        "async function renderMethod",
-    ]
-    for feature in required_features:
-        assert feature in script, feature
+def test_browser_preserves_five_methods_and_exposes_resolution_and_blur_controls() -> None:
+    from html.parser import HTMLParser
 
-    for label in [
-        "Adaptive Robust Baseline",
-        "Motion-Constrained",
-        "Annealed PnP",
-        "Dual-Extreme",
-        "RGAC",
-        "Automatic PSF search",
-        'id="beforeAfterSlider"',
-    ]:
-        assert label in page, label
+    class Controls(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.methods: set[str] = set()
+            self.labels: set[str] = set()
+            self.ids: set[str] = set()
 
-    method_values = set(re.findall(r'name="method" value="([^"]+)"', page))
-    assert method_values == {
-        "baseline",
-        "motion_constrained",
-        "annealed_pnp",
-        "extreme_channel",
-        "rgac",
-    }
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            values = dict(attrs)
+            if tag == "input" and values.get("name") == "method":
+                self.methods.add(values["value"])
+            if tag == "label" and values.get("for"):
+                self.labels.add(values["for"])
+            if values.get("id"):
+                self.ids.add(values["id"])
 
-    # Users may select only the high-level restoration method. Numerical tuning
-    # remains automatic, so there are no exposed kernel/gamma/lambda controls.
-    assert "<select" not in page.lower()
-    assert 'type="number"' not in page.lower()
-    assert "manual motion line" not in page.lower()
-    assert "draw custom psf" not in page.lower()
-    assert "upload psf image" not in page.lower()
-
-
-def test_browser_before_after_reveal_is_directionally_correct_and_draggable() -> None:
-    page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
-    script = (ROOT / "docs" / "browser-lab.js").read_text(encoding="utf-8")
-    styles = (ROOT / "docs" / "browser-lab.css").read_text(encoding="utf-8")
-
-    assert "Drag the center handle" in page
-    assert ".viewer .after{clip-path:inset(0 0 0 50%)}" in styles
-    assert "pointer-events:auto;cursor:ew-resize;touch-action:none" in styles
-    assert "function setSplitFromClientX" in script
-    assert "E.splitHandle.addEventListener('pointerdown'" in script
-    assert "E.resultImage.style.clipPath=`inset(0 0 0 ${v}%)`" in script
-
-
-def test_browser_quality_profile_tracks_python_pipeline_more_closely() -> None:
-    script = (ROOT / "docs" / "browser-lab.js").read_text(encoding="utf-8")
-
-    # The browser remains self-contained, but its quality path should mirror
-    # the Python pipeline's stronger blind search and residual-guided consensus.
-    assert "estimationMax=Math.min(640" in script
-    assert "Math.min(640,plan.estimationMax+120)" in script
-    assert "fineIter:5" in script
-    assert "Math.SQRT1_2" in script
-    assert "Math.min(35,Math.round(35*level))" in script
-    assert "function smoothGray" in script
-    assert "function localGradientMap" in script
-    assert "function localHighpassMap" in script
-    assert "projected=restoreRGB" in script
+    controls = Controls()
+    controls.feed((ROOT / "docs" / "index.html").read_text(encoding="utf-8"))
+    assert controls.methods == {"baseline", "motion_constrained", "annealed_pnp", "extreme_channel", "rgac"}
+    assert {"resolutionSelect", "modelSelect", "motionLength", "motionAngle", "defocusRadius",
+            "cancelBtn", "zoomSelect", "beforeAfterSlider", "exportBtn", "reportBtn"} <= controls.ids
+    assert "fileInput" in controls.labels
 
 
 def test_benchmark_profiles_cover_every_source_with_valid_support() -> None:
