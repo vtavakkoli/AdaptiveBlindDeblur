@@ -1,7 +1,7 @@
 # Adaptive Blind Deblur
 
-[![CI](https://github.com/vtavakkoli/debluring/actions/workflows/ci.yml/badge.svg)](https://github.com/vtavakkoli/debluring/actions/workflows/ci.yml)
-[![Browser Lab](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-2ea44f)](https://vtavakkoli.github.io/debluring/)
+[![CI](https://github.com/vtavakkoli/AdaptiveBlindDeblur/actions/workflows/ci.yml/badge.svg)](https://github.com/vtavakkoli/AdaptiveBlindDeblur/actions/workflows/ci.yml)
+[![Browser Lab](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-2ea44f)](https://vtavakkoli.github.io/AdaptiveBlindDeblur/)
 ![Python](https://img.shields.io/badge/Python-3.13%2B-3776AB)
 ![Research](https://img.shields.io/badge/status-experimental%20research-6f42c1)
 
@@ -11,24 +11,19 @@ This repository is maintained as its **own experimental implementation**. It is 
 
 ## Browser Lab
 
-The standalone browser playground is [`docs/index.html`](docs/index.html). It contains all HTML, CSS, and JavaScript in one file and runs locally in the browser with no server, CDN, framework, or backend.
+The browser app is [`docs/index.html`](docs/index.html), with local CSS, UI JavaScript, a shared numerical core, and a processing worker. It runs without a server-side backend, CDN, model download, or image upload.
 
-Users can attach an image, tune a motion PSF, estimate a dominant blur direction, adjust restoration settings, inspect the PSF, compare before/after with a slider, and export the result.
+- Five selectable restoration methods with before/after comparison and 100%/200% pixel inspection.
+- Reflected-boundary deconvolution with a brightness-preserving regularizer and iterative boundary correction.
+- Automatic PSF estimation, plus optional motion-length/angle and defocus-radius controls.
+- Native-resolution PNG output up to 12 MP, with preserved alpha. Larger images require explicitly selecting the 1400 px preview.
+- Noise suppression, cancellable processing, and JSON export of settings and kernels.
 
-To publish it with GitHub Pages, use:
+Open `docs/index.html` with its companion files, or serve the directory over HTTP to use the dedicated worker. Direct local-file opening has a cooperative fallback where browser security prevents workers.
 
-```text
-Settings → Pages
-Source: Deploy from a branch
-Branch: main
-Folder: /docs
-```
+For GitHub Pages, select **main → /docs** under Settings → Pages. The expected project URL for this repository is **https://vtavakkoli.github.io/AdaptiveBlindDeblur/** once Pages is enabled and the changes are merged.
 
-The site URL is then:
-
-**https://vtavakkoli.github.io/debluring/**
-
-The Browser Lab is intentionally an **interactive approximation** for quick experimentation. The Python/Docker pipeline remains the authoritative full-quality implementation.
+See [Browser quality, controls, and validation](docs/BROWSER_QUALITY.md) for measured synthetic checks, resource limits, and diagnostic definitions. Browser scores are reference-free heuristics. The Python/Docker pipeline remains authoritative for research benchmarking.
 
 ## Methods
 
@@ -241,7 +236,7 @@ write_image("extreme.png", extreme)
 │   ├── results/                   # legacy evaluation assets
 │   └── benchmark_profiles.json    # explicit quality profiles
 ├── docs/
-│   ├── index.html                 # standalone Browser Lab / GitHub Pages
+│   ├── index.html                 # Browser Lab / GitHub Pages entrypoint
 │   ├── METHODS.md
 │   ├── BENCHMARKING.md
 │   └── PSF_QUALITY.md

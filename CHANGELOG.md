@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — Browser restoration quality
+
+- Replace zero-boundary browser restoration with reflected convolution, DC-preserving regularization, and a preconditioned iterative boundary correction.
+- Preserve native output dimensions and alpha; make reduced preview resolution explicit.
+- Add optional motion/defocus controls, noise suppression, pixel zoom, and settings/PSF export.
+- Run numerical work in a cancellable Web Worker with protection against stale jobs and image-encoding races.
+- Improve dark-channel search cost, PnP edge preservation, clipping guards, and common-PSF consensus scoring.
+- Add executable browser-core numerical and worker regression checks without changing the Python benchmark.
+
+
 All notable repository-level changes are documented here.
 
 ## 0.4.0 — Full-quality adaptive benchmark
