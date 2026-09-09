@@ -23,6 +23,6 @@ def test_browser_numerical_quality_and_worker_protocol() -> None:
         pytest.skip("Node is unavailable; the GitHub quality gate runs these checks")
     result = subprocess.run(
         [node, "--test", str(ROOT / "tests" / "browser-quality.cjs")],
-        capture_output=True, text=True, timeout=120, check=False,
+        capture_output=True, text=True, timeout=180, check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr

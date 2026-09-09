@@ -65,6 +65,8 @@ function init() {
     "qualitySelect",
     "resolutionSelect",
     "modelSelect",
+    "autoControls",
+    "kernelSize",
     "motionControls",
     "defocusControls",
     "motionLength",
@@ -249,6 +251,7 @@ function init() {
   );
   E.cancelBtn.addEventListener("click", () => cancel());
   function updateModel() {
+    E.autoControls.hidden = E.modelSelect.value !== "auto";
     E.motionControls.hidden = E.modelSelect.value !== "motion";
     E.defocusControls.hidden = E.modelSelect.value !== "defocus";
   }
@@ -393,7 +396,11 @@ function init() {
       E.methodScoreMetric.textContent = item.q.score.toFixed(5);
       E.methodRuntimeMetric.textContent = `${(item.runtime / 1000).toFixed(1)} s`;
       drawKernel(item.kernel, item.ks);
-      E.psfNote.textContent = `${item.ks} × ${item.ks} kernel in output pixels. ${S.result.options.model === "auto" ? "Estimated from this image." : "Using your blur settings."}`;
+      const { options, estimate } = S.result;
+      E.psfNote.textContent = `${item.ks} × ${item.ks} kernel in output pixels. `;
+      E.psfNote.textContent += options.model === "auto"
+        ? `Requested ${options.kernelSize} × ${options.kernelSize} in original pixels. ${estimate.warning || "Estimated at output pixel scale."}`
+        : "Using your blur settings.";
     } catch (error) {
       if (renderId === S.renderId) status(error.message);
     }
@@ -455,7 +462,7 @@ function init() {
       return DeblurCore.run(image, options, progress);
     }
     return new Promise((resolve, reject) => {
-      const worker = new Worker("deblur-worker.js");
+      const worker = new Worker("deblur-worker.js?v=large-kernel-1");
       S.worker = worker;
       S.cancelJob = reject;
       worker.onmessage = ({ data }) => {
@@ -483,6 +490,7 @@ function init() {
         quality: E.qualitySelect.value,
         resolution: E.resolutionSelect.value,
         model: E.modelSelect.value,
+        kernelSize: Number(E.kernelSize.value),
         length: Number(E.motionLength.value),
         angle: Number(E.motionAngle.value),
         radius: Number(E.defocusRadius.value),
@@ -523,6 +531,12 @@ function init() {
           ),
         );
       E.kernelDecision.textContent = `${result.estimate.mode} · ${result.estimate.candidateCount} candidates · ${result.tiles} restoration tiles.`;
+      if (result.estimate.estimationRegion) {
+        const region = result.estimate.estimationRegion;
+        E.kernelDecision.textContent += ` Estimated on a ${region.w} × ${region.h} crop at output pixel scale.`;
+      }
+      if (result.estimate.warning)
+        E.kernelDecision.textContent += ` ${result.estimate.warning}`;
       E.metricNote.textContent = `Diagnostics measured at ${result.diagnosticSize}, using one common blur model. Use 100% zoom to judge detail and ringing; scores are not a quality guarantee.`;
       await renderMethod(S.selected);
       if (generation === S.generation)

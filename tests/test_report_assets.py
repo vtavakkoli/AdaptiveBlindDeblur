@@ -36,6 +36,7 @@ def test_docker_report_workflow_files_exist() -> None:
 def test_browser_page_uses_only_local_runtime_assets() -> None:
     """Every shipped runtime asset is local and present in the Pages directory."""
     from html.parser import HTMLParser
+    from urllib.parse import urlsplit
 
     class Assets(HTMLParser):
         def __init__(self) -> None:
@@ -51,8 +52,10 @@ def test_browser_page_uses_only_local_runtime_assets() -> None:
 
     parser = Assets()
     parser.feed((ROOT / "docs" / "index.html").read_text(encoding="utf-8"))
-    assert set(parser.urls) == {"browser-lab.css", "browser-lab.js", "deblur-core.js"}
-    for asset in [*parser.urls, "deblur-worker.js"]:
+    assets = [urlsplit(url) for url in parser.urls]
+    assert all(not asset.scheme and not asset.netloc for asset in assets)
+    assert {asset.path for asset in assets} == {"browser-lab.css", "browser-lab.js", "deblur-core.js"}
+    for asset in [*(asset.path for asset in assets), "deblur-worker.js"]:
         content = (ROOT / "docs" / asset).read_text(encoding="utf-8")
         assert "https://" not in content and "http://" not in content
 
@@ -90,7 +93,7 @@ def test_browser_preserves_five_methods_and_exposes_resolution_and_blur_controls
     controls = Controls()
     controls.feed((ROOT / "docs" / "index.html").read_text(encoding="utf-8"))
     assert controls.methods == {"baseline", "motion_constrained", "annealed_pnp", "extreme_channel", "rgac"}
-    assert {"resolutionSelect", "modelSelect", "motionLength", "motionAngle", "defocusRadius",
+    assert {"resolutionSelect", "modelSelect", "kernelSize", "autoControls", "motionLength", "motionAngle", "defocusRadius",
             "cancelBtn", "zoomSelect", "beforeAfterSlider", "exportBtn", "reportBtn"} <= controls.ids
     assert "fileInput" in controls.labels
 

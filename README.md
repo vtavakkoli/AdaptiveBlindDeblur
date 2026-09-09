@@ -15,7 +15,7 @@ The browser app is [`docs/index.html`](docs/index.html), with local CSS, UI Java
 
 - Five selectable restoration methods with before/after comparison and 100%/200% pixel inspection.
 - Reflected-boundary deconvolution with a brightness-preserving regularizer and iterative boundary correction.
-- Automatic PSF estimation, plus optional motion-length/angle and defocus-radius controls.
+- Automatic PSF estimation with explicit 9–125 px kernel support (default 65), sampled at output pixel scale, plus motion-length/angle and defocus-radius controls.
 - Native-resolution PNG output up to 12 MP, with preserved alpha. Larger images require explicitly selecting the 1400 px preview.
 - Noise suppression, cancellable processing, and JSON export of settings and kernels.
 
