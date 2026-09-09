@@ -518,7 +518,7 @@
       }
     return refineKernel(k, ks, false);
   }
-  function scoreKernel(gray, w, h, k, ks, fullSupport) {
+  function scoreKernel(gray, w, h, k, ks) {
     const rest = fftDeconvChannel(gray, w, h, k, ks, 0.0015),
       rb = blurChannel(rest, w, h, k, ks);
     const border = Math.min(ks, Math.max(1, (Math.min(w, h) - 8) >> 1));
@@ -543,7 +543,7 @@
       Math.max(0, hp - 5) * 0.015 +
       outside / Math.max(1, n);
     return {
-      value: rm + artifact + Math.max(0, (fullSupport - 85) / 50) * 0.001,
+      value: rm + artifact,
       rm,
       er,
       hp,
@@ -551,17 +551,16 @@
     };
   }
   async function blindCandidate(base, fullSupport, mode, gamma, iterations) {
-    const scaledSupport = odd(
-        Math.max(3, Math.min(125, Math.round(fullSupport * base.scale))),
-      ),
+    // The estimation crop is already in output pixels. Only pyramid levels
+    // change sampling; the finest level must fit the entire requested support.
+    const scaledSupport = fullSupport,
       gbase = new Float32Array(base.gray.length);
     for (let i = 0; i < gbase.length; i++)
       gbase[i] = Math.pow(clamp(base.gray[i]), gamma);
     const ratio = Math.SQRT1_2,
-      maxLevels = iterations >= 5 ? 5 : 3,
       scaleLevels = [1];
     let sc = 1;
-    while (scaleLevels.length < maxLevels && scaledSupport * sc > 9) {
+    while (scaledSupport * sc > 9 && Math.min(base.w, base.h) * sc > 24) {
       sc *= ratio;
       scaleLevels.unshift(sc);
     }
@@ -614,7 +613,6 @@
         base.h,
         k,
         scaledSupport,
-        fullSupport,
       ),
     };
   }
@@ -1151,47 +1149,91 @@
       }
     return { rgba: out, w: data.w, h: data.h, scale: data.scale };
   }
-  async function estimateKernel(source, options, progress) {
+  function kernelEstimationData(source, kernelSize, quality) {
+    // A thumbnail shrinks physical blur (e.g. 65 px becomes 5 px on a 4K
+    // image). Select a textured crop instead, retaining every source pixel.
+    const side = Math.max(quality === "fast" ? 192 : 320, kernelSize * 3),
+      w = Math.min(source.w, side),
+      h = Math.min(source.h, side),
+      luma = (x, y) => {
+        const i = (y * source.w + x) * 4;
+        return (
+          0.299 * source.rgba[i] + 0.587 * source.rgba[i + 1] +
+          0.114 * source.rgba[i + 2]
+        );
+      };
+    let best = -1,
+      left = 0,
+      top = 0;
+    for (let row = 0; row < 5; row++)
+      for (let col = 0; col < 5; col++) {
+        const x0 = Math.round((source.w - w) * col / 4),
+          y0 = Math.round((source.h - h) * row / 4);
+        let energy = 0;
+        for (let y = 1; y < h - 1; y += 4)
+          for (let x = 1; x < w - 1; x += 4) {
+            const v = luma(x0 + x, y0 + y);
+            energy += Math.abs(luma(x0 + x + 1, y0 + y) - v) +
+              Math.abs(luma(x0 + x, y0 + y + 1) - v);
+          }
+        if (energy > best) {
+          best = energy;
+          left = x0;
+          top = y0;
+        }
+      }
+    const pixels = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      const start = ((top + y) * source.w + left) * 4;
+      pixels.set(source.rgba.subarray(start, start + w * 4), y * w * 4);
+    }
+    return {
+      ...rgbaData(pixels, w, h),
+      region: { x: left, y: top, w, h, scale: 1 },
+    };
+  }
+  async function estimateKernel(source, options, progress = () => {}) {
     if (options.model !== "auto")
       return parametricKernel(
         options.model,
         options.model === "motion" ? options.length : options.radius,
         options.angle,
       );
-    const base = rgbaData(
-      source.rgba,
-      source.w,
-      source.h,
-      options.quality === "fast" ? 192 : 320,
-    );
+    const support = options.kernelSize ?? 65,
+      base = kernelEstimationData(source, support, options.quality);
     if (
       Math.min(base.w, base.h) < 24 ||
       highpass(base.gray, base.w, base.h) < 0.0005
     ) {
       const k = new Float32Array(9);
       k[4] = 1;
-      return { k, size: 3, mode: "identity", gamma: 1, candidateCount: 1 };
+      return {
+        k,
+        size: 3,
+        mode: "identity",
+        gamma: 1,
+        candidateCount: 1,
+        requestedSize: support,
+        estimationRegion: base.region,
+        warning: "Too little texture or too few pixels to estimate blur; using an identity kernel. Try a manual blur model.",
+      };
     }
-    const scene = analyzeScene(base),
-      limit = Math.min(125, Math.floor(Math.min(source.w, source.h) * 0.3));
-    const supports = [9, 17, 29, 45, 65, 95, 125].filter((n) => n <= limit);
-    if (!supports.length) supports.push(odd(Math.max(3, limit - 1)));
+    const scene = analyzeScene(base);
     const candidates = [],
       modes =
         options.quality === "fast"
           ? [scene.lowLight || scene.highSaturation ? "gradient" : "dark"]
           : ["gradient", "dark"];
     let done = 0;
-    for (const support of supports)
-      for (const mode of modes) {
-        progress(
-          `Estimating blur: ${support} px, ${mode === "dark" ? "dark-channel" : "gradient"} search`,
-          5 + (30 * done) / (supports.length * modes.length),
-        );
-        await nextFrame();
-        candidates.push(await blindCandidate(base, support, mode, 1, 2));
-        done++;
-      }
+    for (const mode of modes) {
+      progress(
+        `Estimating blur: ${support} px, ${mode === "dark" ? "dark-channel" : "gradient"} search`,
+        5 + (30 * done) / modes.length,
+      );
+      await nextFrame();
+      candidates.push(await blindCandidate(base, support, mode, 1, 2));
+      done++;
+    }
     candidates.sort((a, b) => a.score.value - b.score.value);
     // Validate refined kernels on the same observations. A longer run is not
     // automatically better; retain the coarse solution when refinement regresses.
@@ -1213,9 +1255,9 @@
     const winner = candidates[0];
     return {
       ...winner,
-      k: resizeKernel(winner.k, winner.size, winner.fullSupport),
-      size: winner.fullSupport,
       candidateCount: candidates.length,
+      requestedSize: support,
+      estimationRegion: base.region,
     };
   }
   async function restoreTile(data, k, ks, regs, progress) {
@@ -1452,6 +1494,7 @@
       quality: "quality",
       resolution: "native",
       model: "auto",
+      kernelSize: 65,
       length: 17,
       angle: 0,
       radius: 3,
@@ -1464,6 +1507,13 @@
       !["auto", "motion", "defocus"].includes(options.model)
     )
       throw new Error("Invalid processing options.");
+    if (
+      !Number.isInteger(options.kernelSize) ||
+      options.kernelSize < 9 ||
+      options.kernelSize > 125 ||
+      options.kernelSize % 2 !== 1
+    )
+      throw new Error("Invalid kernel size: use an odd number from 9 to 125 pixels.");
     for (const [key, low, high] of [
       ["length", 1, 121],
       ["angle", -180, 180],
@@ -1514,9 +1564,11 @@
       options.resolution === "preview"
         ? resizeRGBA(rgba, w, h, 1400)
         : { rgba, w, h, scale: 1 };
-    // Manual controls are expressed in original-image pixels, even in preview.
+    // All kernel controls use original-image pixels. Scale once for an explicit
+    // preview; estimation itself must never silently shrink physical blur.
     const scaledOptions = {
       ...options,
+      kernelSize: odd(options.kernelSize * source.scale),
       length: options.length * source.scale,
       radius: options.radius * source.scale,
     };
@@ -1662,6 +1714,7 @@
     pnpRefine,
     rgacRefine,
     estimateKernel,
+    kernelEstimationData,
   };
   if (typeof module !== "undefined" && module.exports)
     module.exports = root.DeblurCore;

@@ -10,8 +10,8 @@
     />
     <title>AdaptiveBlindDeblur · Browser Lab</title>
     <link rel="stylesheet" href="browser-lab.css" />
-    <script src="deblur-core.js" defer></script>
-    <script src="browser-lab.js" defer></script>
+    <script src="deblur-core.js?v=large-kernel-1" defer></script>
+    <script src="browser-lab.js?v=large-kernel-1" defer></script>
   </head>
   <body>
     <div id="fatal" class="fatal" role="alert" hidden></div>
@@ -76,6 +76,22 @@
               step="0.25"
               value="1"
           /></label>
+        </div>
+        <div id="autoControls" class="manual-controls">
+          <label
+            >Kernel size (original pixels)<input
+              id="kernelSize"
+              type="number"
+              min="9"
+              max="125"
+              step="2"
+              value="65"
+              aria-describedby="kernelSizeHelp"
+          /></label>
+          <p id="kernelSizeHelp">
+            Use an odd size that covers the blur trail. Start with 65; try 95 or
+            125 for large blur. Both search speeds retain the selected size.
+          </p>
         </div>
         <div id="motionControls" class="manual-controls" hidden>
           <label

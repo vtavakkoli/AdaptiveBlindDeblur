@@ -10,15 +10,16 @@ function reflected(i, n) {
 }
 function spatialBlur(image, w, h, k, ks) {
   const out = new Float32Array(w * h),
-    mid = (ks - 1) / 2;
+    mid = (ks - 1) / 2,
+    taps = [];
+  for (let ky = 0; ky < ks; ky++)
+    for (let kx = 0; kx < ks; kx++)
+      if (k[ky * ks + kx]) taps.push([kx - mid, ky - mid, k[ky * ks + kx]]);
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
       let sum = 0;
-      for (let ky = 0; ky < ks; ky++)
-        for (let kx = 0; kx < ks; kx++)
-          sum +=
-            k[ky * ks + kx] *
-            image[reflected(y - ky + mid, h) * w + reflected(x - kx + mid, w)];
+      for (const [dx, dy, value] of taps)
+        sum += value * image[reflected(y - dy, h) * w + reflected(x - dx, w)];
       out[y * w + x] = sum;
     }
   return out;
@@ -156,14 +157,93 @@ test("sliding dark-channel projection matches independent immutable patch minima
 test("invalid options and oversized native jobs fail explicitly", async () => {
   assert.throws(() => C.validateOptions({ length: NaN }), /Invalid length/);
   assert.throws(() => C.validateOptions({ model: "unknown" }), /Invalid/);
+  assert.equal(C.validateOptions({}).kernelSize, 65);
+  for (const kernelSize of [NaN, Infinity, 8, 64, 65.5, 127])
+    assert.throws(() => C.validateOptions({ kernelSize }), /Invalid kernel size/);
   await assert.rejects(
     C.run({ w: 4000, h: 3001, rgba: { length: 4000 * 3001 * 4 } }),
     /12 megapixels/,
   );
 });
+
+test("large-image estimation uses a textured crop without shrinking its pixels", () => {
+  const w = 2000, h = 600,
+    pixels = new Uint8ClampedArray(w * h * 4);
+  for (let y = h - 400; y < h; y++)
+    for (let x = w - 400; x < w; x++) {
+      const i = (y * w + x) * 4;
+      pixels.set([(x * 7 + y * 11) % 256, x % 256, y % 256, 255], i);
+    }
+  for (const quality of ["fast", "quality"]) {
+    const base = C.kernelEstimationData({ w, h, rgba: pixels }, 125, quality);
+    assert.equal(base.scale, 1);
+    assert.equal(base.region.scale, 1);
+    assert.equal(base.w, 375);
+    assert.equal(base.h, 375);
+    assert.ok(base.region.x >= w - 400 && base.region.y >= h - 400);
+    for (let y = 0; y < base.h; y++)
+      for (let x = 0; x < base.w; x++) {
+        const i = ((base.region.y + y) * w + base.region.x + x) * 4;
+        for (let c = 0; c < 3; c++)
+          assert.ok(Math.abs(base.rgb[(y * base.w + x) * 3 + c] - pixels[i + c] / 255) < 1e-7);
+      }
+  }
+});
+
+test("automatic large kernels retain real support beyond 9 pixels", async () => {
+  const w = 192, h = 160, sharp = fixture(w, h);
+  for (const kernelSize of [65, 125]) {
+    const known = C.parametricKernel("motion", kernelSize - 12),
+      blurred = spatialBlur(sharp, w, h, known.k, known.size),
+      estimate = await C.estimateKernel(
+        { w, h, rgba: rgba(blurred) },
+        C.validateOptions({ kernelSize, quality: kernelSize === 65 ? "quality" : "fast" }),
+      );
+    assert.equal(estimate.size, kernelSize);
+    assert.equal(estimate.k.length, kernelSize ** 2);
+    assert.ok(Math.abs(estimate.k.reduce((a, b) => a + b, 0) - 1) < 1e-5);
+    let outside = 0;
+    for (let y = 0; y < kernelSize; y++)
+      for (let x = 0; x < kernelSize; x++)
+        if (Math.abs(x - (kernelSize - 1) / 2) > 4 || Math.abs(y - (kernelSize - 1) / 2) > 4)
+          outside += estimate.k[y * kernelSize + x];
+    assert.ok(outside > 0.5, "The estimate must not be a small kernel padded with zeros");
+  }
+});
+
+test("large known kernels recover independent blur better than a small kernel", () => {
+  const w = 192, h = 160, sharp = fixture(w, h),
+    known = C.parametricKernel("motion", 113),
+    small = C.parametricKernel("motion", 5),
+    blurred = spatialBlur(sharp, w, h, known.k, known.size),
+    recovered = C.deconvChannel(blurred, w, h, known.k, known.size, 0.001),
+    wrong = C.deconvChannel(blurred, w, h, small.k, small.size, 0.001),
+    gain = 10 * Math.log10(mse(blurred, sharp) / mse(recovered, sharp));
+  console.log(`Known 113px motion: ${gain.toFixed(2)} dB gain vs blurred`);
+  assert.ok(gain > 3);
+  assert.ok(mse(recovered, sharp) < mse(wrong, sharp) / 2);
+});
+
+test("all five automatic restorations use the selected large kernel at native resolution", async () => {
+  const w = 96, h = 80, known = C.parametricKernel("motion", 45),
+    pixels = rgba(spatialBlur(fixture(w, h), w, h, known.k, known.size)),
+    result = await C.run({ w, h, rgba: pixels }, { kernelSize: 65, quality: "fast" });
+  assert.equal(result.w, w);
+  assert.equal(result.h, h);
+  assert.equal(result.scale, 1);
+  assert.equal(result.estimate.size, 65);
+  assert.equal(result.options.kernelSize, 65);
+  for (const item of Object.values(result.methods)) {
+    assert.equal(item.ks, 65);
+    assert.equal(item.kernel.length, 65 ** 2);
+    assert.ok(item.kernel.every(Number.isFinite));
+    assert.ok(Number.isFinite(item.q.score));
+    assert.equal(item.rgba.length, pixels.length);
+  }
+});
 test("worker protocol transfers all five outputs and supports terminating a job", async () => {
   const filename = path.resolve(__dirname, "../docs/deblur-worker.js");
-  const wrapper = `const {parentPort,workerData}=require('node:worker_threads'); const path=require('node:path'); global.self=global; global.importScripts=p=>require(path.join(path.dirname(workerData),p)); global.postMessage=(data,transfer)=>parentPort.postMessage(data,transfer); require(workerData); parentPort.on('message',data=>self.onmessage({data}));`;
+  const wrapper = `const {parentPort,workerData}=require('node:worker_threads'); const path=require('node:path'); global.self=global; global.importScripts=p=>require(path.join(path.dirname(workerData),p.split('?')[0])); global.postMessage=(data,transfer)=>parentPort.postMessage(data,transfer); require(workerData); parentPort.on('message',data=>self.onmessage({data}));`;
   const worker = new Worker(wrapper, { eval: true, workerData: filename });
   try {
     const messages = [],
@@ -205,6 +285,21 @@ test("worker protocol transfers all five outputs and supports terminating a job"
   } finally {
     assert.equal(await cancelled.terminate(), 1);
   }
+});
+
+test("preview scales the requested kernel once and discloses an unidentifiable blur", async () => {
+  const w = 2800, h = 1,
+    result = await C.run(
+      { w, h, rgba: rgba(new Float32Array(w * h).fill(0.5)) },
+      { resolution: "preview", kernelSize: 125, quality: "fast" },
+    );
+  assert.equal(result.w, 1400);
+  assert.equal(result.scale, 0.5);
+  assert.equal(result.options.kernelSize, 125);
+  assert.equal(result.estimate.requestedSize, 63);
+  assert.equal(result.estimate.estimationRegion.scale, 1);
+  assert.equal(result.estimate.mode, "identity");
+  assert.match(result.estimate.warning, /Too little texture or too few pixels/);
 });
 
 test("reflected forward and adjoint satisfy the inner-product identity", () => {

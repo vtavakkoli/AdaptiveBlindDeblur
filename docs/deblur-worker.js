@@ -1,5 +1,5 @@
 "use strict";
-importScripts("deblur-core.js");
+importScripts("deblur-core.js?v=large-kernel-1");
 self.onmessage = async ({ data }) => {
   const { id, image, options } = data;
   try {
